@@ -1,0 +1,52 @@
+networks:
+  bitbucket-network:
+    driver: bridge
+
+volumes:
+  bitbucket-data:
+  bitbucket-postgres:
+
+services:
+  postgres:
+    image: postgres:15
+    volumes:
+      - bitbucket-postgres:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: bitbucket
+      POSTGRES_USER: bitbucket
+      POSTGRES_PASSWORD: bitbucket
+    networks:
+      - bitbucket-network
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-q", "-d", "bitbucket", "-U", "bitbucket" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+
+  bitbucket:
+    image: atlassian/bitbucket-server:8.9.4
+    volumes:
+      - bitbucket-data:/var/atlassian/application-data/bitbucket
+    environment:
+      JVM_MINIMUM_MEMORY: 2g
+      JVM_MAXIMUM_MEMORY: 4g
+      JDBC_DRIVER: org.postgresql.Driver
+      JDBC_USER: bitbucket
+      JDBC_PASSWORD: bitbucket
+      JDBC_URL: jdbc:postgresql://postgres:5432/bitbucket
+    ports:
+      - '7990:7990'
+    networks:
+      - bitbucket-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7990/"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
