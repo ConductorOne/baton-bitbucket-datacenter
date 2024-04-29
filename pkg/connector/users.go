@@ -3,21 +3,40 @@ package connector
 import (
 	"context"
 
+	"github.com/conductorone/baton-bitbucket-datacenter/pkg/client"
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
 	"github.com/conductorone/baton-sdk/pkg/annotations"
 	"github.com/conductorone/baton-sdk/pkg/pagination"
 )
 
-type userBuilder struct{}
+type userBuilder struct {
+	resourceType *v2.ResourceType
+	client       *client.DataCenterClient
+}
 
-func (o *userBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
-	return userResourceType
+func (u *userBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
+	return u.resourceType
 }
 
 // List returns all the users from the database as resource objects.
 // Users include a UserTrait because they are the 'shape' of a standard user.
-func (o *userBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId, pToken *pagination.Token) ([]*v2.Resource, string, annotations.Annotations, error) {
-	return nil, "", nil, nil
+func (u *userBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId, pToken *pagination.Token) ([]*v2.Resource, string, annotations.Annotations, error) {
+	var rv []*v2.Resource
+	users, err := u.client.ListUsers(ctx)
+	if err != nil {
+		return nil, "", nil, err
+	}
+
+	for _, usr := range users {
+		usrCopy := usr
+		ur, err := getUserResource(&usrCopy, parentResourceID)
+		if err != nil {
+			return nil, "", nil, err
+		}
+		rv = append(rv, ur)
+	}
+
+	return rv, "", nil, nil
 }
 
 // Entitlements always returns an empty slice for users.
@@ -26,10 +45,13 @@ func (o *userBuilder) Entitlements(_ context.Context, resource *v2.Resource, _ *
 }
 
 // Grants always returns an empty slice for users since they don't have any entitlements.
-func (o *userBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
+func (u *userBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
 	return nil, "", nil, nil
 }
 
-func newUserBuilder() *userBuilder {
-	return &userBuilder{}
+func newUserBuilder(c *client.DataCenterClient) *userBuilder {
+	return &userBuilder{
+		resourceType: resourceTypeUser,
+		client:       c,
+	}
 }
