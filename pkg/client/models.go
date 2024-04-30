@@ -1,11 +1,12 @@
 package client
 
 type UsersAPIData struct {
-	Size       int     `json:"size,omitempty"`
-	Limit      int     `json:"limit,omitempty"`
-	IsLastPage bool    `json:"isLastPage,omitempty"`
-	Users      []Users `json:"values,omitempty"`
-	Start      int     `json:"start,omitempty"`
+	Size          int     `json:"size,omitempty"`
+	Limit         int     `json:"limit,omitempty"`
+	IsLastPage    bool    `json:"isLastPage,omitempty"`
+	Users         []Users `json:"values,omitempty"`
+	Start         int     `json:"start,omitempty"`
+	NextPageStart int     `json:"nextPageStart,omitempty"`
 }
 
 type Users struct {

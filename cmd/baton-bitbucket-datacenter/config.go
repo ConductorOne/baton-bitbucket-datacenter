@@ -26,6 +26,6 @@ func validateConfig(ctx context.Context, cfg *config) error {
 
 // cmdFlags sets the cmdFlags required for the connector.
 func cmdFlags(cmd *cobra.Command) {
-	cmd.PersistentFlags().String("username", "", "Username of administrator used to connect to the BitBucket API. ($BATON_USERNAME)")
-	cmd.PersistentFlags().String("password", "", "Application password used to connect to the BitBucket API. ($BATON_PASSWORD)")
+	cmd.PersistentFlags().String("username", "", "Username of administrator used to connect to the BitBucket API. ($BATON_BITBUCKET_USERNAME)")
+	cmd.PersistentFlags().String("password", "", "Application password used to connect to the BitBucket API. ($BATON_BITBUCKET_PASSWORD)")
 }
