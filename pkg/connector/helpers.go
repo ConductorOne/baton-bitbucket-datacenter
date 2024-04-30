@@ -52,6 +52,14 @@ func getUserResource(user *client.Users, parentResourceID *v2.ResourceId) (*v2.R
 		"first_name": firstName,
 		"last_name":  lastName,
 		"email":      user.EmailAddress,
+		"user_id":    user.ID,
+	}
+
+	switch user.Active {
+	case true:
+		userStatus = v2.UserTrait_Status_STATUS_ENABLED
+	case false:
+		userStatus = v2.UserTrait_Status_STATUS_DISABLED
 	}
 
 	userTraits := []rs.UserTraitOption{
