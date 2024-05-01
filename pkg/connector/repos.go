@@ -24,7 +24,6 @@ const (
 	roleWrite  = "write"
 	roleCreate = "create-repo"
 	roleAdmin  = "admin"
-	roleNone   = "none"
 )
 
 func (r *repoBuilder) ResourceType(ctx context.Context) *v2.ResourceType {

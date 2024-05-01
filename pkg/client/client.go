@@ -63,7 +63,7 @@ func New(ctx context.Context, clientId, clientSecret string) (*DataCenterClient,
 	return &dc, nil
 }
 
-func (d *DataCenterClient) GetUsers(ctx context.Context, startPage string, limit int) ([]Users, Page, error) {
+func (d *DataCenterClient) GetUsers(ctx context.Context, startPage, limit string) ([]Users, Page, error) {
 	var (
 		userData     UsersAPIData
 		page         Page
@@ -85,7 +85,7 @@ func (d *DataCenterClient) GetUsers(ctx context.Context, startPage string, limit
 
 	q := uri.Query()
 	q.Set("start", sPage)
-	q.Set("limit", strconv.Itoa(limit))
+	q.Set("limit", limit)
 	uri.RawQuery = q.Encode()
 	req, err := d.httpClient.NewRequest(ctx,
 		http.MethodGet,
@@ -118,7 +118,7 @@ func (d *DataCenterClient) GetUsers(ctx context.Context, startPage string, limit
 
 func (d *DataCenterClient) ListUsers(ctx context.Context, opts PageOptions) ([]Users, string, error) {
 	var nextPageToken string = ""
-	users, page, err := d.GetUsers(ctx, strconv.Itoa(opts.Page), opts.PerPage)
+	users, page, err := d.GetUsers(ctx, strconv.Itoa(opts.Page), strconv.Itoa(opts.PerPage))
 	if err != nil {
 		return users, "", err
 	}
