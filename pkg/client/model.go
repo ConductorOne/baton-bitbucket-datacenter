@@ -75,3 +75,27 @@ type GroupsAPIData struct {
 	Start         int      `json:"start,omitempty"`
 	NextPageStart int      `json:"nextPageStart,omitempty"`
 }
+
+type MembersAPIData struct {
+	Size          int       `json:"size,omitempty"`
+	Limit         int       `json:"limit,omitempty"`
+	IsLastPage    bool      `json:"isLastPage,omitempty"`
+	Members       []Members `json:"values,omitempty"`
+	Start         int       `json:"start,omitempty"`
+	NextPageStart int       `json:"nextPageStart,omitempty"`
+}
+
+type Members struct {
+	Name           string   `json:"name,omitempty"`
+	EmailAddress   string   `json:"emailAddress,omitempty"`
+	Active         bool     `json:"active,omitempty"`
+	DisplayName    string   `json:"displayName,omitempty"`
+	ID             int      `json:"id,omitempty"`
+	Slug           string   `json:"slug,omitempty"`
+	Type           string   `json:"type,omitempty"`
+	DirectoryName  string   `json:"directoryName,omitempty"`
+	Deletable      bool     `json:"deletable,omitempty"`
+	MutableDetails bool     `json:"mutableDetails,omitempty"`
+	MutableGroups  bool     `json:"mutableGroups,omitempty"`
+	Links          UserSelf `json:"links,omitempty"`
+}

@@ -96,6 +96,8 @@ func (p *projectBuilder) Entitlements(_ context.Context, resource *v2.Resource, 
 
 // Grants always returns an empty slice for users since they don't have any entitlements.
 func (p *projectBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
+	// fmt.Println(resource)
+	// fmt.Println(pToken)
 	return nil, "", nil, nil
 }
 

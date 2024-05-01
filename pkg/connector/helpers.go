@@ -166,8 +166,8 @@ func PString[T any](p *T) T {
 
 // Create a new connector resource for an Bitbucket UserGroup.
 func groupResource(ctx context.Context, group string, parentResourceID *v2.ResourceId) (*v2.Resource, error) {
+	id := group // Bitbucket DC groups only contains name
 	name := group
-	id := group
 	profile := map[string]interface{}{
 		"group_name": name,
 		"group_id":   id,

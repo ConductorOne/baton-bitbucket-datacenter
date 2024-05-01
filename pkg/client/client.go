@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"encoding/base64"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -83,10 +84,7 @@ func (d *DataCenterClient) GetUsers(ctx context.Context, startPage, limit string
 		sPage = startPage
 	}
 
-	q := uri.Query()
-	q.Set("start", sPage)
-	q.Set("limit", limit)
-	uri.RawQuery = q.Encode()
+	setRawQuery(uri, sPage, limit)
 	req, err := d.httpClient.NewRequest(ctx,
 		http.MethodGet,
 		uri,
@@ -150,10 +148,7 @@ func (d *DataCenterClient) GetProjects(ctx context.Context, startPage, limit str
 		sPage = startPage
 	}
 
-	q := uri.Query()
-	q.Set("start", sPage)
-	q.Set("limit", limit)
-	uri.RawQuery = q.Encode()
+	setRawQuery(uri, sPage, limit)
 	req, err := d.httpClient.NewRequest(ctx,
 		http.MethodGet,
 		uri,
@@ -217,10 +212,7 @@ func (d *DataCenterClient) GetRepos(ctx context.Context, startPage, limit string
 		sPage = startPage
 	}
 
-	q := uri.Query()
-	q.Set("start", sPage)
-	q.Set("limit", limit)
-	uri.RawQuery = q.Encode()
+	setRawQuery(uri, sPage, limit)
 	req, err := d.httpClient.NewRequest(ctx,
 		http.MethodGet,
 		uri,
@@ -284,10 +276,7 @@ func (d *DataCenterClient) GetGroups(ctx context.Context, startPage, limit strin
 		sPage = startPage
 	}
 
-	q := uri.Query()
-	q.Set("start", sPage)
-	q.Set("limit", limit)
-	uri.RawQuery = q.Encode()
+	setRawQuery(uri, sPage, limit)
 	req, err := d.httpClient.NewRequest(ctx,
 		http.MethodGet,
 		uri,
@@ -329,4 +318,146 @@ func (d *DataCenterClient) ListGroups(ctx context.Context, opts PageOptions) ([]
 	}
 
 	return groups, nextPageToken, err
+}
+
+func (d *DataCenterClient) GetRepositoryPermissions(ctx context.Context, startPage, limit, projectKey, repositorySlug string) ([]string, Page, error) {
+	var (
+		groupData    GroupsAPIData
+		page         Page
+		sPage, nPage = "0", "0"
+	)
+	strUrl, err := url.JoinPath(d.baseEndpoint, "/projects/", projectKey, "/repos/", repositorySlug, " /permissions/users")
+	if err != nil {
+		return nil, Page{}, err
+	}
+
+	uri, err := url.Parse(strUrl)
+	if err != nil {
+		return nil, Page{}, err
+	}
+
+	if startPage != "" {
+		sPage = startPage
+	}
+
+	setRawQuery(uri, sPage, limit)
+	req, err := d.httpClient.NewRequest(ctx,
+		http.MethodGet,
+		uri,
+		uhttp.WithAcceptJSONHeader(),
+		WithSetBasicAuthHeader(d.getUser(), d.getPWD()),
+	)
+	if err != nil {
+		return nil, Page{}, err
+	}
+
+	resp, err := d.httpClient.Do(req, uhttp.WithJSONResponse(&groupData))
+	if err != nil {
+		return nil, Page{}, err
+	}
+
+	defer resp.Body.Close()
+	sPage = strconv.Itoa(groupData.Start)
+	nPage = strconv.Itoa(groupData.NextPageStart)
+	if !groupData.IsLastPage {
+		page = Page{
+			PreviousPage: &sPage,
+			NextPage:     &nPage,
+			Count:        int64(groupData.Size),
+		}
+	}
+
+	return groupData.Groups, page, nil
+}
+
+func (d *DataCenterClient) ListRepositoryPermissions(ctx context.Context, opts PageOptions, projectKey, repositorySlug string) ([]string, string, error) {
+	var nextPageToken string = ""
+	groups, page, err := d.GetRepositoryPermissions(ctx,
+		strconv.Itoa(opts.Page),
+		strconv.Itoa(opts.PerPage),
+		projectKey,
+		repositorySlug,
+	)
+	if err != nil {
+		return groups, "", err
+	}
+
+	if page.HasNext() {
+		nextPageToken = *page.NextPage
+	}
+
+	return groups, nextPageToken, err
+}
+
+// GetGroupMembers get group members
+// https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-permission-management/#api-api-latest-admin-groups-more-members-get
+func (d *DataCenterClient) GetGroupMembers(ctx context.Context, startPage, limit, groupName string) ([]Members, Page, error) {
+	var (
+		memberData   MembersAPIData
+		page         Page
+		sPage, nPage = "0", "0"
+	)
+	strUrl := fmt.Sprintf("%s/admin/groups/more-members?context=%s", d.baseEndpoint, groupName)
+	uri, err := url.Parse(strUrl)
+	if err != nil {
+		return nil, Page{}, err
+	}
+
+	if startPage != "" {
+		sPage = startPage
+	}
+
+	setRawQuery(uri, sPage, limit)
+	req, err := d.httpClient.NewRequest(ctx,
+		http.MethodGet,
+		uri,
+		uhttp.WithAcceptJSONHeader(),
+		WithSetBasicAuthHeader(d.getUser(), d.getPWD()),
+	)
+	if err != nil {
+		return nil, Page{}, err
+	}
+
+	resp, err := d.httpClient.Do(req, uhttp.WithJSONResponse(&memberData))
+	if err != nil {
+		return nil, Page{}, err
+	}
+
+	defer resp.Body.Close()
+	sPage = strconv.Itoa(memberData.Start)
+	nPage = strconv.Itoa(memberData.NextPageStart)
+	if !memberData.IsLastPage {
+		page = Page{
+			PreviousPage: &sPage,
+			NextPage:     &nPage,
+			Count:        int64(memberData.Size),
+		}
+	}
+
+	return memberData.Members, page, nil
+}
+
+func setRawQuery(uri *url.URL, sPage string, limit string) {
+	q := uri.Query()
+	q.Set("start", sPage)
+	q.Set("limit", limit)
+	uri.RawQuery = q.Encode()
+}
+
+func (d *DataCenterClient) ListGroupMembers(ctx context.Context, opts PageOptions, groupName string) ([]Members, string, error) {
+	var nextPageToken string = ""
+	members, page, err := d.GetGroupMembers(ctx,
+		strconv.Itoa(opts.Page),
+		strconv.Itoa(opts.PerPage),
+		groupName,
+	)
+	if err != nil {
+		return members, "", err
+	}
+
+	if page.HasNext() {
+		nextPageToken = *page.NextPage
+	}
+
+	return members, nextPageToken, err
 }
