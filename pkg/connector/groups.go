@@ -64,7 +64,7 @@ func (g *groupBuilder) Entitlements(_ context.Context, resource *v2.Resource, _ 
 	assignmentOptions := []ent.EntitlementOption{
 		ent.WithGrantableTo(resourceTypeUser),
 		ent.WithDisplayName(fmt.Sprintf("%s Group %s", resource.DisplayName, memberEntitlement)),
-		ent.WithDescription(fmt.Sprintf("Access to %s userGroup in Bitbucket DC", resource.DisplayName)),
+		ent.WithDescription(fmt.Sprintf("Access to %s group in Bitbucket DC", resource.DisplayName)),
 	}
 
 	// create membership entitlement

@@ -66,7 +66,7 @@ func (p *projectBuilder) Entitlements(_ context.Context, resource *v2.Resource, 
 	assignmentOptions := []ent.EntitlementOption{
 		ent.WithGrantableTo(resourceTypeRepository),
 		ent.WithDisplayName(fmt.Sprintf("%s Project %s", resource.DisplayName, repoEntitlement)),
-		ent.WithDescription(fmt.Sprintf("Access to %s project in Bitbucket", resource.DisplayName)),
+		ent.WithDescription(fmt.Sprintf("Access to %s project in Bitbucket DC", resource.DisplayName)),
 	}
 
 	// create membership entitlement

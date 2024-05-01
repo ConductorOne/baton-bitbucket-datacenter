@@ -34,7 +34,7 @@ func (c *Connector) Asset(ctx context.Context, asset *v2.AssetRef) (string, io.R
 func (c *Connector) Metadata(ctx context.Context) (*v2.ConnectorMetadata, error) {
 	return &v2.ConnectorMetadata{
 		DisplayName: "Bitbucket Datacenter Connector",
-		Description: "Connector syncing users, groups, projects and repositories from Bitbucket.",
+		Description: "Connector syncing users, groups, projects and repositories from Bitbucket Datacenter.",
 	}, nil
 }
 
