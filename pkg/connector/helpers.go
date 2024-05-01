@@ -1,6 +1,7 @@
 package connector
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -85,6 +86,30 @@ func getUserResource(user *client.Users, parentResourceID *v2.ResourceId) (*v2.R
 	}
 
 	return ret, nil
+}
+
+// Create a new connector resource for an Bitbucket Project.
+func projectResource(ctx context.Context, project *client.Projects, parentResourceID *v2.ResourceId) (*v2.Resource, error) {
+	profile := map[string]interface{}{
+		"project_id":   project.ID,
+		"project_name": project.Name,
+		"project_key":  project.Key,
+	}
+
+	groupTraitOptions := []rs.GroupTraitOption{rs.WithGroupProfile(profile)}
+	resource, err := rs.NewGroupResource(
+		project.Name,
+		resourceTypeProject,
+		project.ID,
+		groupTraitOptions,
+		rs.WithParentResourceID(parentResourceID),
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return resource, nil
 }
 
 func ParsePageToken(i string, resourceID *v2.ResourceId) (*pagination.Bag, error) {

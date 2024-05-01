@@ -23,3 +23,25 @@ type Users struct {
 type UserSelf struct {
 	Self any `json:"self,omitempty"`
 }
+
+type ProjectsAPIData struct {
+	Size          int        `json:"size,omitempty"`
+	Limit         int        `json:"limit,omitempty"`
+	IsLastPage    bool       `json:"isLastPage,omitempty"`
+	Projects      []Projects `json:"values,omitempty"`
+	Start         int        `json:"start,omitempty"`
+	NextPageStart int        `json:"nextPageStart,omitempty"`
+}
+
+type Projects struct {
+	Key    string      `json:"key,omitempty"`
+	ID     int         `json:"id,omitempty"`
+	Name   string      `json:"name,omitempty"`
+	Public bool        `json:"public,omitempty"`
+	Type   string      `json:"type,omitempty"`
+	Links  ProjectSelf `json:"links,omitempty"`
+}
+
+type ProjectSelf struct {
+	Self any `json:"self,omitempty"`
+}

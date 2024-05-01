@@ -129,3 +129,70 @@ func (d *DataCenterClient) ListUsers(ctx context.Context, pageToken int) ([]User
 
 	return users, nextPageToken, err
 }
+
+func (d *DataCenterClient) GetProjects(ctx context.Context, startPage string) ([]Projects, Page, error) {
+	var (
+		projectData ProjectsAPIData
+		page        Page
+		sPage       = "0"
+		nPage       = "0"
+	)
+	strUrl, err := url.JoinPath(d.baseEndpoint, "/projects")
+	if err != nil {
+		return nil, Page{}, err
+	}
+
+	uri, err := url.Parse(strUrl)
+	if err != nil {
+		return nil, Page{}, err
+	}
+
+	if startPage != "" {
+		sPage = startPage
+	}
+
+	q := uri.Query()
+	q.Set("start", sPage)
+	uri.RawQuery = q.Encode()
+	req, err := d.httpClient.NewRequest(ctx,
+		http.MethodGet,
+		uri,
+		uhttp.WithAcceptJSONHeader(),
+		WithSetBasicAuthHeader(d.getUser(), d.getPWD()),
+	)
+	if err != nil {
+		return nil, Page{}, err
+	}
+
+	resp, err := d.httpClient.Do(req, uhttp.WithJSONResponse(&projectData))
+	if err != nil {
+		return nil, Page{}, err
+	}
+
+	defer resp.Body.Close()
+	sPage = strconv.Itoa(projectData.Start)
+	nPage = strconv.Itoa(projectData.NextPageStart)
+	if !projectData.IsLastPage {
+		page = Page{
+			PreviousPage: &sPage,
+			NextPage:     &nPage,
+			Count:        int64(projectData.Size),
+		}
+	}
+
+	return projectData.Projects, page, nil
+}
+
+func (d *DataCenterClient) ListProjects(ctx context.Context, pageToken int) ([]Projects, string, error) {
+	var nextPageToken string = ""
+	projects, page, err := d.GetProjects(ctx, strconv.Itoa(pageToken))
+	if err != nil {
+		return projects, "", err
+	}
+
+	if page.HasNext() {
+		nextPageToken = *page.NextPage
+	}
+
+	return projects, nextPageToken, err
+}

@@ -13,4 +13,11 @@ var (
 		},
 		Annotations: annotationsForUserResourceType(),
 	}
+	resourceTypeProject = &v2.ResourceType{
+		Id:          "project",
+		DisplayName: "Project",
+		Traits: []v2.ResourceType_Trait{
+			v2.ResourceType_TRAIT_GROUP,
+		},
+	}
 )
