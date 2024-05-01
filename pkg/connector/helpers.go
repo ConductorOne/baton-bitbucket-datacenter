@@ -11,6 +11,8 @@ import (
 	"github.com/conductorone/baton-sdk/pkg/pagination"
 	ent "github.com/conductorone/baton-sdk/pkg/types/entitlement"
 	rs "github.com/conductorone/baton-sdk/pkg/types/resource"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 func annotationsForUserResourceType() annotations.Annotations {
@@ -184,4 +186,10 @@ func groupResource(ctx context.Context, group string, parentResourceID *v2.Resou
 	}
 
 	return resource, nil
+}
+
+func titleCase(s string) string {
+	titleCaser := cases.Title(language.English)
+
+	return titleCaser.String(s)
 }

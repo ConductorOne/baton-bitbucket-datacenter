@@ -2,18 +2,22 @@ package connector
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 
 	"github.com/conductorone/baton-bitbucket-datacenter/pkg/client"
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
 	"github.com/conductorone/baton-sdk/pkg/annotations"
 	"github.com/conductorone/baton-sdk/pkg/pagination"
+	ent "github.com/conductorone/baton-sdk/pkg/types/entitlement"
 )
 
 type groupBuilder struct {
 	resourceType *v2.ResourceType
 	client       *client.DataCenterClient
 }
+
+const memberEntitlement = "member"
 
 func (g *groupBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
 	return g.resourceType
@@ -56,7 +60,21 @@ func (g *groupBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId
 
 // Entitlements always returns an empty slice for users.
 func (g *groupBuilder) Entitlements(_ context.Context, resource *v2.Resource, _ *pagination.Token) ([]*v2.Entitlement, string, annotations.Annotations, error) {
-	return nil, "", nil, nil
+	var rv []*v2.Entitlement
+	assignmentOptions := []ent.EntitlementOption{
+		ent.WithGrantableTo(resourceTypeUser),
+		ent.WithDisplayName(fmt.Sprintf("%s Group %s", resource.DisplayName, memberEntitlement)),
+		ent.WithDescription(fmt.Sprintf("Access to %s userGroup in Bitbucket DC", resource.DisplayName)),
+	}
+
+	// create membership entitlement
+	rv = append(rv, ent.NewAssignmentEntitlement(
+		resource,
+		memberEntitlement,
+		assignmentOptions...,
+	))
+
+	return rv, "", nil, nil
 }
 
 // Grants always returns an empty slice for users since they don't have any entitlements.
