@@ -45,7 +45,7 @@ func splitFullName(name string) (string, string) {
 	return firstName, lastName
 }
 
-func getUserResource(user *client.Users, parentResourceID *v2.ResourceId) (*v2.Resource, error) {
+func userResource(ctx context.Context, user *client.Users, parentResourceID *v2.ResourceId) (*v2.Resource, error) {
 	var userStatus v2.UserTrait_Status_Status = v2.UserTrait_Status_STATUS_ENABLED
 	firstName, lastName := splitFullName(user.Name)
 	profile := map[string]interface{}{
@@ -101,6 +101,30 @@ func projectResource(ctx context.Context, project *client.Projects, parentResour
 		project.Name,
 		resourceTypeProject,
 		project.ID,
+		groupTraitOptions,
+		rs.WithParentResourceID(parentResourceID),
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return resource, nil
+}
+
+// Create a new connector resource for an Bitbucket Repository.
+func repositoryResource(ctx context.Context, repository *client.Repos, parentResourceID *v2.ResourceId) (*v2.Resource, error) {
+	profile := map[string]interface{}{
+		"repository_id":        repository.ID,
+		"repository_name":      repository.Name,
+		"repository_full_name": repository.Slug,
+	}
+
+	groupTraitOptions := []rs.GroupTraitOption{rs.WithGroupProfile(profile)}
+	resource, err := rs.NewGroupResource(
+		repository.Name,
+		resourceTypeRepository,
+		repository.ID,
 		groupTraitOptions,
 		rs.WithParentResourceID(parentResourceID),
 	)

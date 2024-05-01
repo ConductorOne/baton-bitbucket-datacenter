@@ -45,3 +45,24 @@ type Projects struct {
 type ProjectSelf struct {
 	Self any `json:"self,omitempty"`
 }
+
+type ReposAPIData struct {
+	Size          int     `json:"size,omitempty"`
+	Limit         int     `json:"limit,omitempty"`
+	IsLastPage    bool    `json:"isLastPage,omitempty"`
+	Repos         []Repos `json:"values,omitempty"`
+	Start         int     `json:"start,omitempty"`
+	NextPageStart int     `json:"nextPageStart,omitempty"`
+}
+
+type Repos struct {
+	Slug          string   `json:"slug,omitempty"`
+	ID            int      `json:"id,omitempty"`
+	Name          string   `json:"name,omitempty"`
+	HierarchyId   string   `json:"hierarchyId,omitempty"`
+	ScmId         string   `json:"scmId,omitempty"`
+	State         string   `json:"state,omitempty"`
+	StatusMessage string   `json:"statusMessage,omitempty"`
+	Forkable      bool     `json:"forkable,omitempty"`
+	Project       Projects `json:"project,omitempty"`
+}

@@ -19,6 +19,7 @@ func (c *Connector) ResourceSyncers(ctx context.Context) []connectorbuilder.Reso
 	return []connectorbuilder.ResourceSyncer{
 		newUserBuilder(c.client),
 		newProjectBuilder(c.client),
+		newRepoBuilder(c.client),
 	}
 }
 

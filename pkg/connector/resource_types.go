@@ -20,4 +20,8 @@ var (
 			v2.ResourceType_TRAIT_GROUP,
 		},
 	}
+	resourceTypeRepository = &v2.ResourceType{
+		Id:          "repository",
+		DisplayName: "Repository",
+	}
 )

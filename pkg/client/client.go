@@ -196,3 +196,70 @@ func (d *DataCenterClient) ListProjects(ctx context.Context, pageToken int) ([]P
 
 	return projects, nextPageToken, err
 }
+
+func (d *DataCenterClient) GetRepos(ctx context.Context, startPage string) ([]Repos, Page, error) {
+	var (
+		repoData ReposAPIData
+		page     Page
+		sPage    = "0"
+		nPage    = "0"
+	)
+	strUrl, err := url.JoinPath(d.baseEndpoint, "/repos")
+	if err != nil {
+		return nil, Page{}, err
+	}
+
+	uri, err := url.Parse(strUrl)
+	if err != nil {
+		return nil, Page{}, err
+	}
+
+	if startPage != "" {
+		sPage = startPage
+	}
+
+	q := uri.Query()
+	q.Set("start", sPage)
+	uri.RawQuery = q.Encode()
+	req, err := d.httpClient.NewRequest(ctx,
+		http.MethodGet,
+		uri,
+		uhttp.WithAcceptJSONHeader(),
+		WithSetBasicAuthHeader(d.getUser(), d.getPWD()),
+	)
+	if err != nil {
+		return nil, Page{}, err
+	}
+
+	resp, err := d.httpClient.Do(req, uhttp.WithJSONResponse(&repoData))
+	if err != nil {
+		return nil, Page{}, err
+	}
+
+	defer resp.Body.Close()
+	sPage = strconv.Itoa(repoData.Start)
+	nPage = strconv.Itoa(repoData.NextPageStart)
+	if !repoData.IsLastPage {
+		page = Page{
+			PreviousPage: &sPage,
+			NextPage:     &nPage,
+			Count:        int64(repoData.Size),
+		}
+	}
+
+	return repoData.Repos, page, nil
+}
+
+func (d *DataCenterClient) ListRepos(ctx context.Context, pageToken int) ([]Repos, string, error) {
+	var nextPageToken string = ""
+	repos, page, err := d.GetRepos(ctx, strconv.Itoa(pageToken))
+	if err != nil {
+		return repos, "", err
+	}
+
+	if page.HasNext() {
+		nextPageToken = *page.NextPage
+	}
+
+	return repos, nextPageToken, err
+}
