@@ -66,3 +66,12 @@ type Repos struct {
 	Forkable      bool     `json:"forkable,omitempty"`
 	Project       Projects `json:"project,omitempty"`
 }
+
+type GroupsAPIData struct {
+	Size          int      `json:"size,omitempty"`
+	Limit         int      `json:"limit,omitempty"`
+	IsLastPage    bool     `json:"isLastPage,omitempty"`
+	Groups        []string `json:"values,omitempty"`
+	Start         int      `json:"start,omitempty"`
+	NextPageStart int      `json:"nextPageStart,omitempty"`
+}

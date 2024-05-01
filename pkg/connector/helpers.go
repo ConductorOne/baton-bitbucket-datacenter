@@ -152,3 +152,36 @@ func ParsePageToken(i string, resourceID *v2.ResourceId) (*pagination.Bag, error
 
 	return b, nil
 }
+
+func PString[T any](p *T) T {
+	if p == nil {
+		var v T
+		return v
+	}
+
+	return *p
+}
+
+// Create a new connector resource for an Bitbucket UserGroup.
+func groupResource(ctx context.Context, group string, parentResourceID *v2.ResourceId) (*v2.Resource, error) {
+	name := group
+	id := group
+	profile := map[string]interface{}{
+		"group_name": name,
+		"group_id":   id,
+	}
+	groupTraitOptions := []rs.GroupTraitOption{rs.WithGroupProfile(profile)}
+	resource, err := rs.NewGroupResource(
+		name,
+		resourceTypeGroup,
+		id,
+		groupTraitOptions,
+		rs.WithParentResourceID(parentResourceID),
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return resource, nil
+}

@@ -263,3 +263,70 @@ func (d *DataCenterClient) ListRepos(ctx context.Context, pageToken int) ([]Repo
 
 	return repos, nextPageToken, err
 }
+
+func (d *DataCenterClient) GetGroups(ctx context.Context, startPage string) ([]string, Page, error) {
+	var (
+		groupData GroupsAPIData
+		page      Page
+		sPage     = "0"
+		nPage     = "0"
+	)
+	strUrl, err := url.JoinPath(d.baseEndpoint, "/groups")
+	if err != nil {
+		return nil, Page{}, err
+	}
+
+	uri, err := url.Parse(strUrl)
+	if err != nil {
+		return nil, Page{}, err
+	}
+
+	if startPage != "" {
+		sPage = startPage
+	}
+
+	q := uri.Query()
+	q.Set("start", sPage)
+	uri.RawQuery = q.Encode()
+	req, err := d.httpClient.NewRequest(ctx,
+		http.MethodGet,
+		uri,
+		uhttp.WithAcceptJSONHeader(),
+		WithSetBasicAuthHeader(d.getUser(), d.getPWD()),
+	)
+	if err != nil {
+		return nil, Page{}, err
+	}
+
+	resp, err := d.httpClient.Do(req, uhttp.WithJSONResponse(&groupData))
+	if err != nil {
+		return nil, Page{}, err
+	}
+
+	defer resp.Body.Close()
+	sPage = strconv.Itoa(groupData.Start)
+	nPage = strconv.Itoa(groupData.NextPageStart)
+	if !groupData.IsLastPage {
+		page = Page{
+			PreviousPage: &sPage,
+			NextPage:     &nPage,
+			Count:        int64(groupData.Size),
+		}
+	}
+
+	return groupData.Groups, page, nil
+}
+
+func (d *DataCenterClient) ListGroups(ctx context.Context, pageToken int) ([]string, string, error) {
+	var nextPageToken string = ""
+	groups, page, err := d.GetGroups(ctx, strconv.Itoa(pageToken))
+	if err != nil {
+		return groups, "", err
+	}
+
+	if page.HasNext() {
+		nextPageToken = *page.NextPage
+	}
+
+	return groups, nextPageToken, err
+}

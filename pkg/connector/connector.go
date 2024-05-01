@@ -20,6 +20,7 @@ func (c *Connector) ResourceSyncers(ctx context.Context) []connectorbuilder.Reso
 		newUserBuilder(c.client),
 		newProjectBuilder(c.client),
 		newRepoBuilder(c.client),
+		newGroupBuilder(c.client),
 	}
 }
 
@@ -32,8 +33,8 @@ func (c *Connector) Asset(ctx context.Context, asset *v2.AssetRef) (string, io.R
 // Metadata returns metadata about the connector.
 func (c *Connector) Metadata(ctx context.Context) (*v2.ConnectorMetadata, error) {
 	return &v2.ConnectorMetadata{
-		DisplayName: "My Baton Connector",
-		Description: "The template implementation of a baton connector",
+		DisplayName: "Bitbucket Datacenter Connector",
+		Description: "Connector syncing users, groups, projects and repositories from Bitbucket.",
 	}, nil
 }
 
