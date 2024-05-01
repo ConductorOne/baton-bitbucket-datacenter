@@ -4,6 +4,8 @@ import (
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
 )
 
+const ITEMSPERPAGE = 10
+
 var (
 	resourceTypeUser = &v2.ResourceType{
 		Id:          "user",

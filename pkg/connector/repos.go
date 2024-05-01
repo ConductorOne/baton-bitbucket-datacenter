@@ -34,7 +34,10 @@ func (r *repoBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId,
 		}
 	}
 
-	repos, nextPageToken, err := r.client.ListRepos(ctx, pageToken)
+	repos, nextPageToken, err := r.client.ListRepos(ctx, client.PageOptions{
+		PerPage: ITEMSPERPAGE,
+		Page:    pageToken,
+	})
 	if err != nil {
 		return nil, "", nil, err
 	}

@@ -34,7 +34,10 @@ func (p *projectBuilder) List(ctx context.Context, parentResourceID *v2.Resource
 		}
 	}
 
-	projects, nextPageToken, err := p.client.ListProjects(ctx, pageToken)
+	projects, nextPageToken, err := p.client.ListProjects(ctx, client.PageOptions{
+		PerPage: ITEMSPERPAGE,
+		Page:    pageToken,
+	})
 	if err != nil {
 		return nil, "", nil, err
 	}

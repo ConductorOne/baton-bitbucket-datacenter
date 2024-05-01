@@ -34,7 +34,10 @@ func (u *userBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId,
 		}
 	}
 
-	users, nextPageToken, err := u.client.ListUsers(ctx, pageToken)
+	users, nextPageToken, err := u.client.ListUsers(ctx, client.PageOptions{
+		PerPage: ITEMSPERPAGE,
+		Page:    pageToken,
+	})
 	if err != nil {
 		return nil, "", nil, err
 	}

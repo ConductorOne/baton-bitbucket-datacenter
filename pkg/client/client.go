@@ -63,7 +63,7 @@ func New(ctx context.Context, clientId, clientSecret string) (*DataCenterClient,
 	return &dc, nil
 }
 
-func (d *DataCenterClient) GetUsers(ctx context.Context, startPage string) ([]Users, Page, error) {
+func (d *DataCenterClient) GetUsers(ctx context.Context, startPage string, limit int) ([]Users, Page, error) {
 	var (
 		userData UsersAPIData
 		page     Page
@@ -86,6 +86,7 @@ func (d *DataCenterClient) GetUsers(ctx context.Context, startPage string) ([]Us
 
 	q := uri.Query()
 	q.Set("start", sPage)
+	q.Set("limit", strconv.Itoa(limit))
 	uri.RawQuery = q.Encode()
 	req, err := d.httpClient.NewRequest(ctx,
 		http.MethodGet,
@@ -116,9 +117,9 @@ func (d *DataCenterClient) GetUsers(ctx context.Context, startPage string) ([]Us
 	return userData.Users, page, nil
 }
 
-func (d *DataCenterClient) ListUsers(ctx context.Context, pageToken int) ([]Users, string, error) {
+func (d *DataCenterClient) ListUsers(ctx context.Context, opts PageOptions) ([]Users, string, error) {
 	var nextPageToken string = ""
-	users, page, err := d.GetUsers(ctx, strconv.Itoa(pageToken))
+	users, page, err := d.GetUsers(ctx, strconv.Itoa(opts.Page), opts.PerPage)
 	if err != nil {
 		return users, "", err
 	}
@@ -130,7 +131,7 @@ func (d *DataCenterClient) ListUsers(ctx context.Context, pageToken int) ([]User
 	return users, nextPageToken, err
 }
 
-func (d *DataCenterClient) GetProjects(ctx context.Context, startPage string) ([]Projects, Page, error) {
+func (d *DataCenterClient) GetProjects(ctx context.Context, startPage, limit string) ([]Projects, Page, error) {
 	var (
 		projectData ProjectsAPIData
 		page        Page
@@ -153,6 +154,7 @@ func (d *DataCenterClient) GetProjects(ctx context.Context, startPage string) ([
 
 	q := uri.Query()
 	q.Set("start", sPage)
+	q.Set("limit", limit)
 	uri.RawQuery = q.Encode()
 	req, err := d.httpClient.NewRequest(ctx,
 		http.MethodGet,
@@ -183,9 +185,9 @@ func (d *DataCenterClient) GetProjects(ctx context.Context, startPage string) ([
 	return projectData.Projects, page, nil
 }
 
-func (d *DataCenterClient) ListProjects(ctx context.Context, pageToken int) ([]Projects, string, error) {
+func (d *DataCenterClient) ListProjects(ctx context.Context, opts PageOptions) ([]Projects, string, error) {
 	var nextPageToken string = ""
-	projects, page, err := d.GetProjects(ctx, strconv.Itoa(pageToken))
+	projects, page, err := d.GetProjects(ctx, strconv.Itoa(opts.Page), strconv.Itoa(opts.PerPage))
 	if err != nil {
 		return projects, "", err
 	}
@@ -197,7 +199,7 @@ func (d *DataCenterClient) ListProjects(ctx context.Context, pageToken int) ([]P
 	return projects, nextPageToken, err
 }
 
-func (d *DataCenterClient) GetRepos(ctx context.Context, startPage string) ([]Repos, Page, error) {
+func (d *DataCenterClient) GetRepos(ctx context.Context, startPage, limit string) ([]Repos, Page, error) {
 	var (
 		repoData ReposAPIData
 		page     Page
@@ -220,6 +222,7 @@ func (d *DataCenterClient) GetRepos(ctx context.Context, startPage string) ([]Re
 
 	q := uri.Query()
 	q.Set("start", sPage)
+	q.Set("limit", limit)
 	uri.RawQuery = q.Encode()
 	req, err := d.httpClient.NewRequest(ctx,
 		http.MethodGet,
@@ -250,9 +253,9 @@ func (d *DataCenterClient) GetRepos(ctx context.Context, startPage string) ([]Re
 	return repoData.Repos, page, nil
 }
 
-func (d *DataCenterClient) ListRepos(ctx context.Context, pageToken int) ([]Repos, string, error) {
+func (d *DataCenterClient) ListRepos(ctx context.Context, opts PageOptions) ([]Repos, string, error) {
 	var nextPageToken string = ""
-	repos, page, err := d.GetRepos(ctx, strconv.Itoa(pageToken))
+	repos, page, err := d.GetRepos(ctx, strconv.Itoa(opts.Page), strconv.Itoa(opts.PerPage))
 	if err != nil {
 		return repos, "", err
 	}
@@ -264,7 +267,7 @@ func (d *DataCenterClient) ListRepos(ctx context.Context, pageToken int) ([]Repo
 	return repos, nextPageToken, err
 }
 
-func (d *DataCenterClient) GetGroups(ctx context.Context, startPage string) ([]string, Page, error) {
+func (d *DataCenterClient) GetGroups(ctx context.Context, startPage, limit string) ([]string, Page, error) {
 	var (
 		groupData GroupsAPIData
 		page      Page
@@ -287,6 +290,7 @@ func (d *DataCenterClient) GetGroups(ctx context.Context, startPage string) ([]s
 
 	q := uri.Query()
 	q.Set("start", sPage)
+	q.Set("limit", limit)
 	uri.RawQuery = q.Encode()
 	req, err := d.httpClient.NewRequest(ctx,
 		http.MethodGet,
@@ -317,9 +321,9 @@ func (d *DataCenterClient) GetGroups(ctx context.Context, startPage string) ([]s
 	return groupData.Groups, page, nil
 }
 
-func (d *DataCenterClient) ListGroups(ctx context.Context, pageToken int) ([]string, string, error) {
+func (d *DataCenterClient) ListGroups(ctx context.Context, opts PageOptions) ([]string, string, error) {
 	var nextPageToken string = ""
-	groups, page, err := d.GetGroups(ctx, strconv.Itoa(pageToken))
+	groups, page, err := d.GetGroups(ctx, strconv.Itoa(opts.Page), strconv.Itoa(opts.PerPage))
 	if err != nil {
 		return groups, "", err
 	}

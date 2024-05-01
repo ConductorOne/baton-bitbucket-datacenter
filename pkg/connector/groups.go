@@ -34,7 +34,10 @@ func (g *groupBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId
 		}
 	}
 
-	groups, nextPageToken, err := g.client.ListGroups(ctx, pageToken)
+	groups, nextPageToken, err := g.client.ListGroups(ctx, client.PageOptions{
+		PerPage: ITEMSPERPAGE,
+		Page:    pageToken,
+	})
 	if err != nil {
 		return nil, "", nil, err
 	}
