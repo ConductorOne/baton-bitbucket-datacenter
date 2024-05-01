@@ -65,10 +65,9 @@ func New(ctx context.Context, clientId, clientSecret string) (*DataCenterClient,
 
 func (d *DataCenterClient) GetUsers(ctx context.Context, startPage string, limit int) ([]Users, Page, error) {
 	var (
-		userData UsersAPIData
-		page     Page
-		sPage    = "0"
-		nPage    = "0"
+		userData     UsersAPIData
+		page         Page
+		sPage, nPage = "0", "0"
 	)
 	strUrl, err := url.JoinPath(d.baseEndpoint, "/users")
 	if err != nil {
@@ -133,10 +132,9 @@ func (d *DataCenterClient) ListUsers(ctx context.Context, opts PageOptions) ([]U
 
 func (d *DataCenterClient) GetProjects(ctx context.Context, startPage, limit string) ([]Projects, Page, error) {
 	var (
-		projectData ProjectsAPIData
-		page        Page
-		sPage       = "0"
-		nPage       = "0"
+		projectData  ProjectsAPIData
+		page         Page
+		sPage, nPage = "0", "0"
 	)
 	strUrl, err := url.JoinPath(d.baseEndpoint, "/projects")
 	if err != nil {
@@ -201,10 +199,9 @@ func (d *DataCenterClient) ListProjects(ctx context.Context, opts PageOptions) (
 
 func (d *DataCenterClient) GetRepos(ctx context.Context, startPage, limit string) ([]Repos, Page, error) {
 	var (
-		repoData ReposAPIData
-		page     Page
-		sPage    = "0"
-		nPage    = "0"
+		repoData     ReposAPIData
+		page         Page
+		sPage, nPage = "0", "0"
 	)
 	strUrl, err := url.JoinPath(d.baseEndpoint, "/repos")
 	if err != nil {
@@ -269,10 +266,9 @@ func (d *DataCenterClient) ListRepos(ctx context.Context, opts PageOptions) ([]R
 
 func (d *DataCenterClient) GetGroups(ctx context.Context, startPage, limit string) ([]string, Page, error) {
 	var (
-		groupData GroupsAPIData
-		page      Page
-		sPage     = "0"
-		nPage     = "0"
+		groupData    GroupsAPIData
+		page         Page
+		sPage, nPage = "0", "0"
 	)
 	strUrl, err := url.JoinPath(d.baseEndpoint, "/groups")
 	if err != nil {
