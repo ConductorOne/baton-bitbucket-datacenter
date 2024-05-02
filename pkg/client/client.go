@@ -320,71 +320,6 @@ func (d *DataCenterClient) ListGroups(ctx context.Context, opts PageOptions) ([]
 	return groups, nextPageToken, err
 }
 
-func (d *DataCenterClient) GetRepositoryPermissions(ctx context.Context, startPage, limit, projectKey, repositorySlug string) ([]UsersPermissions, Page, error) {
-	var (
-		permissionData GlobalPermissionsAPIData
-		page           Page
-		sPage, nPage   = "0", "0"
-	)
-	strUrl := fmt.Sprintf("%s/projects/%s/repos/%s/permissions/users", d.baseEndpoint, projectKey, repositorySlug)
-	uri, err := url.Parse(strUrl)
-	if err != nil {
-		return nil, Page{}, err
-	}
-
-	if startPage != "" {
-		sPage = startPage
-	}
-
-	setRawQuery(uri, sPage, limit)
-	req, err := d.httpClient.NewRequest(ctx,
-		http.MethodGet,
-		uri,
-		uhttp.WithAcceptJSONHeader(),
-		WithSetBasicAuthHeader(d.getUser(), d.getPWD()),
-	)
-	if err != nil {
-		return nil, Page{}, err
-	}
-
-	resp, err := d.httpClient.Do(req, uhttp.WithJSONResponse(&permissionData))
-	if err != nil {
-		return nil, Page{}, err
-	}
-
-	defer resp.Body.Close()
-	sPage = strconv.Itoa(permissionData.Start)
-	nPage = strconv.Itoa(permissionData.NextPageStart)
-	if !permissionData.IsLastPage {
-		page = Page{
-			PreviousPage: &sPage,
-			NextPage:     &nPage,
-			Count:        int64(permissionData.Size),
-		}
-	}
-
-	return permissionData.UsersPermissions, page, nil
-}
-
-func (d *DataCenterClient) ListRepositoryPermissions(ctx context.Context, opts PageOptions, projectKey, repositorySlug string) ([]UsersPermissions, string, error) {
-	var nextPageToken string = ""
-	permissions, page, err := d.GetRepositoryPermissions(ctx,
-		strconv.Itoa(opts.Page),
-		strconv.Itoa(opts.PerPage),
-		projectKey,
-		repositorySlug,
-	)
-	if err != nil {
-		return permissions, "", err
-	}
-
-	if page.HasNext() {
-		nextPageToken = *page.NextPage
-	}
-
-	return permissions, nextPageToken, err
-}
-
 // GetGroupMembers get group members
 // https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-permission-management/#api-api-latest-admin-groups-more-members-get
 func (d *DataCenterClient) GetGroupMembers(ctx context.Context, startPage, limit, groupName string) ([]Members, Page, error) {
@@ -525,4 +460,133 @@ func (d *DataCenterClient) ListGlobalPermissions(ctx context.Context, opts PageO
 	}
 
 	return usersPermissions, nextPageToken, err
+}
+
+func (d *DataCenterClient) GetRepositoryPermissions(ctx context.Context, startPage, limit, projectKey, repositorySlug string) ([]UsersPermissions, Page, error) {
+	var (
+		permissionData GlobalPermissionsAPIData
+		page           Page
+		sPage, nPage   = "0", "0"
+	)
+	strUrl := fmt.Sprintf("%s/projects/%s/repos/%s/permissions/users", d.baseEndpoint, projectKey, repositorySlug)
+	uri, err := url.Parse(strUrl)
+	if err != nil {
+		return nil, Page{}, err
+	}
+
+	if startPage != "" {
+		sPage = startPage
+	}
+
+	setRawQuery(uri, sPage, limit)
+	req, err := d.httpClient.NewRequest(ctx,
+		http.MethodGet,
+		uri,
+		uhttp.WithAcceptJSONHeader(),
+		WithSetBasicAuthHeader(d.getUser(), d.getPWD()),
+	)
+	if err != nil {
+		return nil, Page{}, err
+	}
+
+	resp, err := d.httpClient.Do(req, uhttp.WithJSONResponse(&permissionData))
+	if err != nil {
+		return nil, Page{}, err
+	}
+
+	defer resp.Body.Close()
+	sPage = strconv.Itoa(permissionData.Start)
+	nPage = strconv.Itoa(permissionData.NextPageStart)
+	if !permissionData.IsLastPage {
+		page = Page{
+			PreviousPage: &sPage,
+			NextPage:     &nPage,
+			Count:        int64(permissionData.Size),
+		}
+	}
+
+	return permissionData.UsersPermissions, page, nil
+}
+
+func (d *DataCenterClient) ListRepositoryPermissions(ctx context.Context, opts PageOptions, projectKey, repositorySlug string) ([]UsersPermissions, string, error) {
+	var nextPageToken string = ""
+	permissions, page, err := d.GetRepositoryPermissions(ctx,
+		strconv.Itoa(opts.Page),
+		strconv.Itoa(opts.PerPage),
+		projectKey,
+		repositorySlug,
+	)
+	if err != nil {
+		return permissions, "", err
+	}
+
+	if page.HasNext() {
+		nextPageToken = *page.NextPage
+	}
+
+	return permissions, nextPageToken, err
+}
+
+func (d *DataCenterClient) GetProjectsPermissions(ctx context.Context, startPage, limit, projectKey string) ([]UsersPermissions, Page, error) {
+	var (
+		permissionData GlobalPermissionsAPIData
+		page           Page
+		sPage, nPage   = "0", "0"
+	)
+	strUrl := fmt.Sprintf("%s/projects/%s/permissions/users", d.baseEndpoint, projectKey)
+	uri, err := url.Parse(strUrl)
+	if err != nil {
+		return nil, Page{}, err
+	}
+
+	if startPage != "" {
+		sPage = startPage
+	}
+
+	setRawQuery(uri, sPage, limit)
+	req, err := d.httpClient.NewRequest(ctx,
+		http.MethodGet,
+		uri,
+		uhttp.WithAcceptJSONHeader(),
+		WithSetBasicAuthHeader(d.getUser(), d.getPWD()),
+	)
+	if err != nil {
+		return nil, Page{}, err
+	}
+
+	resp, err := d.httpClient.Do(req, uhttp.WithJSONResponse(&permissionData))
+	if err != nil {
+		return nil, Page{}, err
+	}
+
+	defer resp.Body.Close()
+	sPage = strconv.Itoa(permissionData.Start)
+	nPage = strconv.Itoa(permissionData.NextPageStart)
+	if !permissionData.IsLastPage {
+		page = Page{
+			PreviousPage: &sPage,
+			NextPage:     &nPage,
+			Count:        int64(permissionData.Size),
+		}
+	}
+
+	return permissionData.UsersPermissions, page, nil
+}
+
+func (d *DataCenterClient) ListProjectsPermissions(ctx context.Context, opts PageOptions, projectKey string) ([]UsersPermissions, string, error) {
+	var nextPageToken string = ""
+	permissions, page, err := d.GetProjectsPermissions(ctx,
+		strconv.Itoa(opts.Page),
+		strconv.Itoa(opts.PerPage),
+		projectKey,
+	)
+	if err != nil {
+		return permissions, "", err
+	}
+
+	if page.HasNext() {
+		nextPageToken = *page.NextPage
+	}
+
+	return permissions, nextPageToken, err
 }

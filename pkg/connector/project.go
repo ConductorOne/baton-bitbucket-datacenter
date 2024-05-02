@@ -10,6 +10,8 @@ import (
 	"github.com/conductorone/baton-sdk/pkg/annotations"
 	"github.com/conductorone/baton-sdk/pkg/pagination"
 	ent "github.com/conductorone/baton-sdk/pkg/types/entitlement"
+	"github.com/conductorone/baton-sdk/pkg/types/grant"
+	rs "github.com/conductorone/baton-sdk/pkg/types/resource"
 )
 
 type projectBuilder struct {
@@ -19,7 +21,14 @@ type projectBuilder struct {
 
 const repoEntitlement = "repository"
 
-var projectPermissions = []string{roleRead, roleWrite, roleCreate, roleAdmin}
+const (
+	roleProjectRead   = "PROJECT_READ"
+	roleProjectWrite  = "PROJECT_WRITE"
+	roleProjectCreate = "PROJECT_CREATE"
+	roleProjectAdmin  = "PROJECT_ADMIN"
+)
+
+var projectPermissions = []string{roleProjectRead, roleProjectWrite, roleProjectCreate, roleProjectAdmin}
 
 func (p *projectBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
 	return p.resourceType
@@ -63,19 +72,6 @@ func (p *projectBuilder) List(ctx context.Context, parentResourceID *v2.Resource
 // Entitlements always returns an empty slice for users.
 func (p *projectBuilder) Entitlements(_ context.Context, resource *v2.Resource, _ *pagination.Token) ([]*v2.Entitlement, string, annotations.Annotations, error) {
 	var rv []*v2.Entitlement
-	assignmentOptions := []ent.EntitlementOption{
-		ent.WithGrantableTo(resourceTypeRepository),
-		ent.WithDisplayName(fmt.Sprintf("%s Project %s", resource.DisplayName, repoEntitlement)),
-		ent.WithDescription(fmt.Sprintf("Access to %s project in Bitbucket DC", resource.DisplayName)),
-	}
-
-	// create membership entitlement
-	rv = append(rv, ent.NewAssignmentEntitlement(
-		resource,
-		repoEntitlement,
-		assignmentOptions...,
-	))
-
 	// create entitlements for each project role (read, write, create, admin)
 	for _, permission := range projectPermissions {
 		permissionOptions := []ent.EntitlementOption{
@@ -96,9 +92,57 @@ func (p *projectBuilder) Entitlements(_ context.Context, resource *v2.Resource, 
 
 // Grants always returns an empty slice for users since they don't have any entitlements.
 func (p *projectBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
-	// fmt.Println(resource)
-	// fmt.Println(pToken)
-	return nil, "", nil, nil
+	var (
+		pageToken  int
+		err        error
+		rv         []*v2.Grant
+		projectKey string
+		ok         bool = false
+	)
+	if pToken.Token != "" {
+		pageToken, err = strconv.Atoi(pToken.Token)
+		if err != nil {
+			return nil, "", nil, err
+		}
+	}
+
+	groupTrait, err := rs.GetGroupTrait(resource)
+	if err != nil {
+		return nil, "", nil, err
+	}
+
+	if projectKey, ok = rs.GetProfileStringValue(groupTrait.Profile, "project_key"); !ok {
+		return nil, "", nil, fmt.Errorf("project_key not found")
+	}
+
+	members, nextPageToken, err := p.client.ListProjectsPermissions(ctx, client.PageOptions{
+		PerPage: ITEMSPERPAGE,
+		Page:    pageToken,
+	}, projectKey)
+	if err != nil {
+		return nil, "", nil, err
+	}
+
+	for _, member := range members {
+		usrCppy := member.User
+		ur, err := userResource(ctx, &client.Users{
+			Name:         usrCppy.Name,
+			EmailAddress: usrCppy.EmailAddress,
+			Active:       usrCppy.Active,
+			DisplayName:  usrCppy.DisplayName,
+			ID:           usrCppy.ID,
+			Slug:         usrCppy.Slug,
+			Type:         usrCppy.Type,
+		}, resource.Id)
+		if err != nil {
+			return nil, "", nil, fmt.Errorf("error creating user resource for project %s: %w", resource.Id.Resource, err)
+		}
+
+		membershipGrant := grant.NewGrant(resource, member.Permission, ur.Id)
+		rv = append(rv, membershipGrant)
+	}
+
+	return rv, nextPageToken, nil, nil
 }
 
 func newProjectBuilder(c *client.DataCenterClient) *projectBuilder {

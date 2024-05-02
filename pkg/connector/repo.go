@@ -19,14 +19,14 @@ type repoBuilder struct {
 	client       *client.DataCenterClient
 }
 
-var repositoryRoles = []string{roleRead, roleWrite, roleAdmin}
-
 const (
-	roleRead   = "REPO_READ"
-	roleWrite  = "REPO_WRITE"
-	roleCreate = "CREATE-REPO"
-	roleAdmin  = "REPO_ADMIN"
+	roleRepoRead   = "REPO_READ"
+	roleRepoWrite  = "REPO_WRITE"
+	roleRepoCreate = "CREATE-REPO"
+	roleRepoAdmin  = "REPO_ADMIN"
 )
+
+var repositoryRoles = []string{roleRepoRead, roleRepoWrite, roleRepoAdmin}
 
 func (r *repoBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
 	return r.resourceType
@@ -133,7 +133,7 @@ func (r *repoBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken 
 			Type:         usrCppy.Type,
 		}, resource.Id)
 		if err != nil {
-			return nil, "", nil, fmt.Errorf("error creating user resource for group %s: %w", resource.Id.Resource, err)
+			return nil, "", nil, fmt.Errorf("error creating user resource for repository %s: %w", resource.Id.Resource, err)
 		}
 
 		membershipGrant := grant.NewGrant(resource, member.Permission, ur.Id)
