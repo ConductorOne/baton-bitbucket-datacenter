@@ -99,3 +99,17 @@ type Members struct {
 	MutableGroups  bool     `json:"mutableGroups,omitempty"`
 	Links          UserSelf `json:"links,omitempty"`
 }
+
+type GlobalPermissionsAPIData struct {
+	Size             int                `json:"size,omitempty"`
+	Limit            int                `json:"limit,omitempty"`
+	IsLastPage       bool               `json:"isLastPage,omitempty"`
+	UsersPermissions []UsersPermissions `json:"values,omitempty"`
+	Start            int                `json:"start,omitempty"`
+	NextPageStart    int                `json:"nextPageStart,omitempty"`
+}
+
+type UsersPermissions struct {
+	User       Users  `json:"user,omitempty"`
+	Permission string `json:"permission,omitempty"`
+}
