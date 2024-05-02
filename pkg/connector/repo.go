@@ -26,7 +26,7 @@ const (
 	roleRepoAdmin  = "REPO_ADMIN"
 )
 
-var repositoryRoles = []string{roleRepoRead, roleRepoWrite, roleRepoAdmin}
+var repositoryRoles = []string{roleRepoRead, roleRepoWrite, roleRepoAdmin, roleRepoCreate}
 
 func (r *repoBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
 	return r.resourceType
@@ -95,7 +95,7 @@ func (r *repoBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken 
 		err        error
 		rv         []*v2.Grant
 		projectKey string
-		ok         bool = false
+		ok         bool
 	)
 	if pToken.Token != "" {
 		pageToken, err = strconv.Atoi(pToken.Token)

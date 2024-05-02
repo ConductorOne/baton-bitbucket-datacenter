@@ -19,8 +19,6 @@ type projectBuilder struct {
 	client       *client.DataCenterClient
 }
 
-const repoEntitlement = "repository"
-
 const (
 	roleProjectRead   = "PROJECT_READ"
 	roleProjectWrite  = "PROJECT_WRITE"
@@ -97,7 +95,7 @@ func (p *projectBuilder) Grants(ctx context.Context, resource *v2.Resource, pTok
 		err        error
 		rv         []*v2.Grant
 		projectKey string
-		ok         bool = false
+		ok         bool
 	)
 	if pToken.Token != "" {
 		pageToken, err = strconv.Atoi(pToken.Token)
