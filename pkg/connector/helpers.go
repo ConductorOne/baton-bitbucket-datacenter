@@ -117,9 +117,10 @@ func projectResource(ctx context.Context, project *client.Projects, parentResour
 // Create a new connector resource for an Bitbucket Repository.
 func repositoryResource(ctx context.Context, repository *client.Repos, parentResourceID *v2.ResourceId) (*v2.Resource, error) {
 	profile := map[string]interface{}{
-		"repository_id":        repository.ID,
-		"repository_name":      repository.Name,
-		"repository_full_name": repository.Slug,
+		"repository_id":          repository.ID,
+		"repository_name":        repository.Name,
+		"repository_full_name":   repository.Slug,
+		"repository_project_key": repository.Project.Key,
 	}
 
 	groupTraitOptions := []rs.GroupTraitOption{rs.WithGroupProfile(profile)}

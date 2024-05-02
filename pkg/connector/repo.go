@@ -10,6 +10,8 @@ import (
 	"github.com/conductorone/baton-sdk/pkg/annotations"
 	"github.com/conductorone/baton-sdk/pkg/pagination"
 	ent "github.com/conductorone/baton-sdk/pkg/types/entitlement"
+	"github.com/conductorone/baton-sdk/pkg/types/grant"
+	rs "github.com/conductorone/baton-sdk/pkg/types/resource"
 )
 
 type repoBuilder struct {
@@ -20,10 +22,10 @@ type repoBuilder struct {
 var repositoryRoles = []string{roleRead, roleWrite, roleAdmin}
 
 const (
-	roleRead   = "read"
-	roleWrite  = "write"
-	roleCreate = "create-repo"
-	roleAdmin  = "admin"
+	roleRead   = "REPO_READ"
+	roleWrite  = "REPO_WRITE"
+	roleCreate = "CREATE-REPO"
+	roleAdmin  = "REPO_ADMIN"
 )
 
 func (r *repoBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
@@ -66,7 +68,7 @@ func (r *repoBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId,
 }
 
 // Entitlements always returns an empty slice for users.
-func (p *repoBuilder) Entitlements(_ context.Context, resource *v2.Resource, _ *pagination.Token) ([]*v2.Entitlement, string, annotations.Annotations, error) {
+func (r *repoBuilder) Entitlements(_ context.Context, resource *v2.Resource, _ *pagination.Token) ([]*v2.Entitlement, string, annotations.Annotations, error) {
 	var rv []*v2.Entitlement
 	// create entitlements for each repository role (read, write, admin)
 	for _, role := range repositoryRoles {
@@ -87,8 +89,58 @@ func (p *repoBuilder) Entitlements(_ context.Context, resource *v2.Resource, _ *
 }
 
 // Grants always returns an empty slice for users since they don't have any entitlements.
-func (p *repoBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
-	return nil, "", nil, nil
+func (r *repoBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
+	var (
+		pageToken  int
+		err        error
+		rv         []*v2.Grant
+		projectKey string
+		ok         bool = false
+	)
+	if pToken.Token != "" {
+		pageToken, err = strconv.Atoi(pToken.Token)
+		if err != nil {
+			return nil, "", nil, err
+		}
+	}
+
+	groupTrait, err := rs.GetGroupTrait(resource)
+	if err != nil {
+		return nil, "", nil, err
+	}
+
+	if projectKey, ok = rs.GetProfileStringValue(groupTrait.Profile, "repository_project_key"); !ok {
+		return nil, "", nil, fmt.Errorf("repository_project_key not found")
+	}
+
+	members, nextPageToken, err := r.client.ListRepositoryPermissions(ctx, client.PageOptions{
+		PerPage: ITEMSPERPAGE,
+		Page:    pageToken,
+	}, projectKey, resource.DisplayName)
+	if err != nil {
+		return nil, "", nil, err
+	}
+
+	for _, member := range members {
+		usrCppy := member.User
+		ur, err := userResource(ctx, &client.Users{
+			Name:         usrCppy.Name,
+			EmailAddress: usrCppy.EmailAddress,
+			Active:       usrCppy.Active,
+			DisplayName:  usrCppy.DisplayName,
+			ID:           usrCppy.ID,
+			Slug:         usrCppy.Slug,
+			Type:         usrCppy.Type,
+		}, resource.Id)
+		if err != nil {
+			return nil, "", nil, fmt.Errorf("error creating user resource for group %s: %w", resource.Id.Resource, err)
+		}
+
+		membershipGrant := grant.NewGrant(resource, member.Permission, ur.Id)
+		rv = append(rv, membershipGrant)
+	}
+
+	return rv, nextPageToken, nil, nil
 }
 
 func newRepoBuilder(c *client.DataCenterClient) *repoBuilder {
