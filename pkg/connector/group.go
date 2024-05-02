@@ -3,6 +3,7 @@ package connector
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 
 	"github.com/conductorone/baton-bitbucket-datacenter/pkg/client"
@@ -18,7 +19,7 @@ type groupBuilder struct {
 	client       *client.DataCenterClient
 }
 
-const memberEntitlement = "member"
+const memberEntitlement = "MEMBER"
 
 func (g *groupBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
 	return g.resourceType
@@ -60,8 +61,12 @@ func (g *groupBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId
 }
 
 // Entitlements always returns an empty slice for users.
-func (g *groupBuilder) Entitlements(_ context.Context, resource *v2.Resource, _ *pagination.Token) ([]*v2.Entitlement, string, annotations.Annotations, error) {
-	var rv []*v2.Entitlement
+func (g *groupBuilder) Entitlements(ctx context.Context, resource *v2.Resource, pToken *pagination.Token) ([]*v2.Entitlement, string, annotations.Annotations, error) {
+	var (
+		pageToken int
+		err       error
+		rv        []*v2.Entitlement
+	)
 	assignmentOptions := []ent.EntitlementOption{
 		ent.WithGrantableTo(resourceTypeUser),
 		ent.WithDisplayName(fmt.Sprintf("%s Group %s", resource.DisplayName, memberEntitlement)),
@@ -75,15 +80,46 @@ func (g *groupBuilder) Entitlements(_ context.Context, resource *v2.Resource, _ 
 		assignmentOptions...,
 	))
 
-	return rv, "", nil, nil
+	if pToken.Token != "" {
+		pageToken, err = strconv.Atoi(pToken.Token)
+		if err != nil {
+			return nil, "", nil, err
+		}
+	}
+
+	permissions, nextPageToken, err := g.client.ListGlobalPermissions(ctx, client.PageOptions{
+		PerPage: ITEMSPERPAGE,
+		Page:    pageToken,
+	})
+	if err != nil {
+		return nil, "", nil, err
+	}
+
+	// create entitlements for each project role (read, write, create, admin)
+	for _, permission := range permissions {
+		permissionOptions := []ent.EntitlementOption{
+			ent.WithGrantableTo(resourceTypeUser, resourceTypeGroup),
+			ent.WithDisplayName(fmt.Sprintf("%s Group %s", resource.DisplayName, permission.Permission)),
+			ent.WithDescription(fmt.Sprintf("%s access to %s group in Bitbucket DC", titleCase(permission.Permission), resource.DisplayName)),
+		}
+
+		rv = append(rv, ent.NewPermissionEntitlement(
+			resource,
+			permission.Permission,
+			permissionOptions...,
+		))
+	}
+
+	return rv, nextPageToken, nil, nil
 }
 
 // Grants always returns an empty slice for users since they don't have any entitlements.
 func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
 	var (
-		pageToken int
-		err       error
-		rv        []*v2.Grant
+		pageToken      int
+		err            error
+		rv             []*v2.Grant
+		rolePermission string = memberEntitlement
 	)
 	if pToken.Token != "" {
 		pageToken, err = strconv.Atoi(pToken.Token)
@@ -115,7 +151,19 @@ func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 			return nil, "", nil, fmt.Errorf("error creating user resource for group %s: %w", resource.Id.Resource, err)
 		}
 
-		membershipGrant := grant.NewGrant(resource, memberEntitlement, ur.Id)
+		permissions, _, err := g.client.ListGlobalPermissions(ctx, client.PageOptions{})
+		if err != nil {
+			return nil, "", nil, err
+		}
+
+		index := slices.IndexFunc(permissions, func(c client.UsersPermissions) bool {
+			return c.User.ID == usrCppy.ID
+		})
+		if index != -1 {
+			rolePermission = permissions[index].Permission
+		}
+
+		membershipGrant := grant.NewGrant(resource, rolePermission, ur.Id)
 		rv = append(rv, membershipGrant)
 	}
 
