@@ -192,7 +192,7 @@ func (g *groupBuilder) Grant(ctx context.Context, principal *v2.Resource, entitl
 		return nil, err
 	}
 
-	// // check if user is already a member of the group
+	// Check if user is already a member of the group
 	members, _, err := g.client.ListGroupMembers(ctx, client.PageOptions{
 		PerPage: ITEMSPERPAGE,
 		Page:    0,
@@ -229,6 +229,62 @@ func (g *groupBuilder) Grant(ctx context.Context, principal *v2.Resource, entitl
 }
 
 func (g *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.Annotations, error) {
+	l := ctxzap.Extract(ctx)
+	principal := grant.Principal
+	entitlement := grant.Entitlement
+	if principal.Id.ResourceType != resourceTypeUser.Id {
+		l.Warn(
+			"bitbucket(dc)-connector: only users can have group membership revoked",
+			zap.String("principal_id", principal.Id.String()),
+			zap.String("principal_type", principal.Id.ResourceType),
+		)
+
+		return nil, fmt.Errorf("bitbucket(dc)-connector: only users can have group membership revoked")
+	}
+
+	groupResourceId, _, err := ParseEntitlementID(entitlement.Id)
+	if err != nil {
+		return nil, err
+	}
+
+	userId, err := strconv.Atoi(principal.Id.Resource)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check if user is member of the group
+	members, _, err := g.client.ListGroupMembers(ctx, client.PageOptions{
+		PerPage: ITEMSPERPAGE,
+		Page:    0,
+	}, groupResourceId.Resource)
+	if err != nil {
+		return nil, fmt.Errorf("bitbucket(dc)-connector: failed to get group members: %w", err)
+	}
+
+	index := slices.IndexFunc(members, func(c client.Members) bool {
+		return c.ID == userId
+	})
+	if index == -1 {
+		l.Warn(
+			"bitbucket(dc)-connector: user is not a member of the group",
+			zap.String("principal_id", principal.Id.String()),
+			zap.String("principal_type", principal.Id.ResourceType),
+		)
+		return nil, fmt.Errorf("bitbucket(dc)-connector: user is not a member of the group")
+	}
+
+	// Remove user from group
+	err = g.client.RemoveUserFromGroup(ctx, principal.DisplayName, groupResourceId.Resource)
+	if err != nil {
+		return nil, fmt.Errorf("bitbucket(dc)-connector: failed to remove user from group: %w", err)
+	}
+
+	l.Warn("Membership has been removed.",
+		zap.Int64("UserID", int64(userId)),
+		zap.String("User", principal.DisplayName),
+		zap.String("Group", groupResourceId.Resource),
+	)
+
 	return nil, nil
 }
 

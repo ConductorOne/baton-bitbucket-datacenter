@@ -660,7 +660,10 @@ func (d *DataCenterClient) ListGroupRepositoryPermissions(ctx context.Context, o
 
 func (d *DataCenterClient) AddUserToGroups(ctx context.Context, groupName, userName string) error {
 	var (
-		body    Body
+		body struct {
+			Groups []string `json:"groups"`
+			User   string   `json:"user"`
+		}
 		payload = []byte(fmt.Sprintf(`{"groups": ["%s"], "user": "%s"}`, groupName, userName))
 	)
 
@@ -699,6 +702,57 @@ func (d *DataCenterClient) AddUserToGroups(ctx context.Context, groupName, userN
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		return errors.New("user not added")
+	}
+
+	return nil
+}
+
+// RemoveUserFromGroup removes user from group
+// https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-permission-management/#api-api-latest-admin-users-remove-group-post
+func (d *DataCenterClient) RemoveUserFromGroup(ctx context.Context, userName, groupName string) error {
+	var (
+		body struct {
+			Context  string `json:"context"`
+			ItemName string `json:"itemName"`
+		}
+		payload = []byte(fmt.Sprintf(`{"context": "%s", "itemName": "%s"}`, userName, groupName))
+	)
+
+	strUrl, err := url.JoinPath(d.baseEndpoint, "/admin/users/remove-group")
+	if err != nil {
+		return err
+	}
+
+	uri, err := url.Parse(strUrl)
+	if err != nil {
+		return err
+	}
+
+	err = json.Unmarshal(payload, &body)
+	if err != nil {
+		return err
+	}
+
+	req, err := d.httpClient.NewRequest(ctx,
+		http.MethodPost,
+		uri,
+		uhttp.WithAcceptJSONHeader(),
+		WithSetBasicAuthHeader(d.getUser(), d.getPWD()),
+		uhttp.WithJSONBody(body),
+	)
+
+	if err != nil {
+		return err
+	}
+
+	resp, err := d.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return errors.New("user not removed")
 	}
 
 	return nil

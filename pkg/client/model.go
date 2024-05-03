@@ -131,8 +131,3 @@ type GroupsPermissions struct {
 type Groups struct {
 	Name string `json:"name,omitempty"`
 }
-
-type Body struct {
-	Groups []string `json:"groups"`
-	User   string   `json:"user"`
-}
