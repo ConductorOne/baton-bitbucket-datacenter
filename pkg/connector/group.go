@@ -12,6 +12,8 @@ import (
 	"github.com/conductorone/baton-sdk/pkg/pagination"
 	ent "github.com/conductorone/baton-sdk/pkg/types/entitlement"
 	"github.com/conductorone/baton-sdk/pkg/types/grant"
+	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
+	"go.uber.org/zap"
 )
 
 type groupBuilder struct {
@@ -167,6 +169,67 @@ func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 	}
 
 	return rv, nextPageToken, nil, nil
+}
+
+func (g *groupBuilder) Grant(ctx context.Context, principal *v2.Resource, entitlement *v2.Entitlement) (annotations.Annotations, error) {
+	l := ctxzap.Extract(ctx)
+	if principal.Id.ResourceType != resourceTypeUser.Id {
+		l.Warn(
+			"bitbucket(dc)-connector: only users can be granted group membership",
+			zap.String("principal_type", principal.Id.ResourceType),
+			zap.String("principal_id", principal.Id.Resource),
+		)
+		return nil, fmt.Errorf("bitbucket(dc)-connector: only users can be granted group membership")
+	}
+
+	groupResourceId, _, err := ParseEntitlementID(entitlement.Id)
+	if err != nil {
+		return nil, err
+	}
+
+	userId, err := strconv.Atoi(principal.Id.Resource)
+	if err != nil {
+		return nil, err
+	}
+
+	// // check if user is already a member of the group
+	members, _, err := g.client.ListGroupMembers(ctx, client.PageOptions{
+		PerPage: ITEMSPERPAGE,
+		Page:    0,
+	}, groupResourceId.Resource)
+	if err != nil {
+		return nil, fmt.Errorf("bitbucket(dc)-connector: failed to get group members: %w", err)
+	}
+
+	index := slices.IndexFunc(members, func(c client.Members) bool {
+		return c.ID == userId
+	})
+	if index != -1 {
+		l.Warn(
+			"bitbucket(dc)-connector: user is already a member of the group",
+			zap.String("principal_id", principal.Id.String()),
+			zap.String("principal_type", principal.Id.ResourceType),
+		)
+		return nil, fmt.Errorf("bitbucket(dc)-connector: user is already a member of the group")
+	}
+
+	// Add user to the group
+	err = g.client.AddUserToGroups(ctx, groupResourceId.Resource, principal.DisplayName)
+	if err != nil {
+		return nil, fmt.Errorf("bitbucket(dc)-connector: failed to add user to group: %w", err)
+	}
+
+	l.Warn("Membership has been created.",
+		zap.Int64("UserID", int64(userId)),
+		zap.String("User", principal.DisplayName),
+		zap.String("Group", groupResourceId.Resource),
+	)
+
+	return nil, nil
+}
+
+func (g *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.Annotations, error) {
+	return nil, nil
 }
 
 func newGroupBuilder(c *client.DataCenterClient) *groupBuilder {

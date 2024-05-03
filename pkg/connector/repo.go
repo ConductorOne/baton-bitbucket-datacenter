@@ -12,6 +12,8 @@ import (
 	ent "github.com/conductorone/baton-sdk/pkg/types/entitlement"
 	"github.com/conductorone/baton-sdk/pkg/types/grant"
 	rs "github.com/conductorone/baton-sdk/pkg/types/resource"
+	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
+	"go.uber.org/zap"
 )
 
 type repoBuilder struct {
@@ -198,7 +200,28 @@ func (r *repoBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken 
 		return nil, "", nil, err
 	}
 
+	if nextPageToken == pToken.Token {
+		nextPageToken = ""
+	}
+
 	return rv, nextPageToken, nil, nil
+}
+
+func (g *repoBuilder) Grant(ctx context.Context, principal *v2.Resource, entitlement *v2.Entitlement) (annotations.Annotations, error) {
+	l := ctxzap.Extract(ctx)
+	if principal.Id.ResourceType != resourceTypeRepository.Id {
+		l.Warn(
+			"bitbucker(bk)-connector: only users can be granted repo membership",
+			zap.String("principal_type", principal.Id.ResourceType),
+			zap.String("principal_id", principal.Id.Resource),
+		)
+		return nil, fmt.Errorf("zendesk-connector: only users can be granted repo membership")
+	}
+	return nil, nil
+}
+
+func (g *repoBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.Annotations, error) {
+	return nil, nil
 }
 
 func newRepoBuilder(c *client.DataCenterClient) *repoBuilder {

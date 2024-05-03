@@ -3,6 +3,8 @@ package client
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -654,4 +656,50 @@ func (d *DataCenterClient) ListGroupRepositoryPermissions(ctx context.Context, o
 	}
 
 	return permissions, nextPageToken, err
+}
+
+func (d *DataCenterClient) AddUserToGroups(ctx context.Context, groupName, userName string) error {
+	var (
+		body    Body
+		payload = []byte(fmt.Sprintf(`{"groups": ["%s"], "user": "%s"}`, groupName, userName))
+	)
+
+	strUrl, err := url.JoinPath(d.baseEndpoint, "/admin/users/add-groups")
+	if err != nil {
+		return err
+	}
+
+	uri, err := url.Parse(strUrl)
+	if err != nil {
+		return err
+	}
+
+	err = json.Unmarshal(payload, &body)
+	if err != nil {
+		return err
+	}
+
+	req, err := d.httpClient.NewRequest(ctx,
+		http.MethodPost,
+		uri,
+		uhttp.WithAcceptJSONHeader(),
+		WithSetBasicAuthHeader(d.getUser(), d.getPWD()),
+		uhttp.WithJSONBody(body),
+	)
+
+	if err != nil {
+		return err
+	}
+
+	resp, err := d.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return errors.New("user not added")
+	}
+
+	return nil
 }

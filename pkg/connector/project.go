@@ -142,6 +142,14 @@ func (p *projectBuilder) Grants(ctx context.Context, resource *v2.Resource, pTok
 	return rv, nextPageToken, nil, nil
 }
 
+func (g *projectBuilder) Grant(ctx context.Context, principal *v2.Resource, entitlement *v2.Entitlement) (annotations.Annotations, error) {
+	return nil, nil
+}
+
+func (g *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.Annotations, error) {
+	return nil, nil
+}
+
 func newProjectBuilder(c *client.DataCenterClient) *projectBuilder {
 	return &projectBuilder{
 		resourceType: resourceTypeProject,

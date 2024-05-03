@@ -57,6 +57,7 @@ func userResource(ctx context.Context, user *client.Users, parentResourceID *v2.
 		"last_name":  lastName,
 		"email":      user.EmailAddress,
 		"user_id":    user.ID,
+		"user_slug":  user.Slug,
 	}
 
 	switch user.Active {
@@ -212,4 +213,19 @@ func unmarshalSkipToken(token *pagination.Token) (int32, *pagination.Bag, error)
 		skip = int32(skip64)
 	}
 	return skip, b, nil
+}
+
+func ParseEntitlementID(id string) (*v2.ResourceId, string, error) {
+	parts := strings.Split(id, ":")
+
+	// Need to be at least 3 parts type:entitlement_id:slug
+	if len(parts) < 3 {
+		return nil, "", fmt.Errorf("bitbucket-connector: invalid resource id")
+	}
+
+	resourceId := &v2.ResourceId{
+		ResourceType: parts[0],
+		Resource:     strings.Join(parts[1:len(parts)-1], ":"),
+	}
+	return resourceId, parts[len(parts)-1], nil
 }
