@@ -196,23 +196,6 @@ func titleCase(s string) string {
 	return titleCaser.String(s)
 }
 
-func parsePageToken(i string, resourceID *v2.ResourceId) (*pagination.Bag, error) {
-	b := &pagination.Bag{}
-	err := b.Unmarshal(i)
-	if err != nil {
-		return nil, err
-	}
-
-	if b.Current() == nil {
-		b.Push(pagination.PageState{
-			ResourceTypeID: resourceID.ResourceType,
-			ResourceID:     resourceID.Resource,
-		})
-	}
-
-	return b, nil
-}
-
 func unmarshalSkipToken(token *pagination.Token) (int32, *pagination.Bag, error) {
 	b := &pagination.Bag{}
 	err := b.Unmarshal(token.Token)
