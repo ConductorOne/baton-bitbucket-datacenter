@@ -3,6 +3,7 @@ package connector
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/conductorone/baton-bitbucket-datacenter/pkg/client"
@@ -193,4 +194,39 @@ func titleCase(s string) string {
 	titleCaser := cases.Title(language.English)
 
 	return titleCaser.String(s)
+}
+
+func parsePageToken(i string, resourceID *v2.ResourceId) (*pagination.Bag, error) {
+	b := &pagination.Bag{}
+	err := b.Unmarshal(i)
+	if err != nil {
+		return nil, err
+	}
+
+	if b.Current() == nil {
+		b.Push(pagination.PageState{
+			ResourceTypeID: resourceID.ResourceType,
+			ResourceID:     resourceID.Resource,
+		})
+	}
+
+	return b, nil
+}
+
+func unmarshalSkipToken(token *pagination.Token) (int32, *pagination.Bag, error) {
+	b := &pagination.Bag{}
+	err := b.Unmarshal(token.Token)
+	if err != nil {
+		return 0, nil, err
+	}
+	current := b.Current()
+	skip := int32(0)
+	if current != nil && current.Token != "" {
+		skip64, err := strconv.ParseInt(current.Token, 10, 32)
+		if err != nil {
+			return 0, nil, err
+		}
+		skip = int32(skip64)
+	}
+	return skip, b, nil
 }

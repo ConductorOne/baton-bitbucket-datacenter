@@ -88,17 +88,34 @@ func (r *repoBuilder) Entitlements(_ context.Context, resource *v2.Resource, _ *
 	return rv, "", nil, nil
 }
 
-// Grants always returns an empty slice for users since they don't have any entitlements.
 func (r *repoBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
 	var (
-		pageToken  int
-		err        error
-		rv         []*v2.Grant
-		projectKey string
-		ok         bool
+		pageToken         int
+		err               error
+		rv                []*v2.Grant
+		projectKey        string
+		ok                bool
+		nextPageToken     string
+		usersPermissions  []client.UsersPermissions
+		groupsPermissions []client.GroupsPermissions
 	)
-	if pToken.Token != "" {
-		pageToken, err = strconv.Atoi(pToken.Token)
+	_, bag, err := unmarshalSkipToken(pToken)
+	if err != nil {
+		return nil, "", nil, err
+	}
+
+	if bag.Current() == nil {
+		// Push onto stack in reverse
+		bag.Push(pagination.PageState{
+			ResourceTypeID: resourceTypeGroup.Id,
+		})
+		bag.Push(pagination.PageState{
+			ResourceTypeID: resourceTypeUser.Id,
+		})
+	}
+
+	if bag.Current().Token != "" {
+		pageToken, err = strconv.Atoi(bag.Current().Token)
 		if err != nil {
 			return nil, "", nil, err
 		}
@@ -113,31 +130,72 @@ func (r *repoBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken 
 		return nil, "", nil, fmt.Errorf("repository_project_key not found")
 	}
 
-	members, nextPageToken, err := r.client.ListRepositoryPermissions(ctx, client.PageOptions{
-		PerPage: ITEMSPERPAGE,
-		Page:    pageToken,
-	}, projectKey, resource.DisplayName)
-	if err != nil {
-		return nil, "", nil, err
-	}
-
-	for _, member := range members {
-		usrCppy := member.User
-		ur, err := userResource(ctx, &client.Users{
-			Name:         usrCppy.Name,
-			EmailAddress: usrCppy.EmailAddress,
-			Active:       usrCppy.Active,
-			DisplayName:  usrCppy.DisplayName,
-			ID:           usrCppy.ID,
-			Slug:         usrCppy.Slug,
-			Type:         usrCppy.Type,
-		}, resource.Id)
+	switch bag.ResourceTypeID() {
+	case resourceTypeGroup.Id:
+		groupsPermissions, nextPageToken, err = r.client.ListGroupRepositoryPermissions(ctx, client.PageOptions{
+			PerPage: ITEMSPERPAGE,
+			Page:    pageToken,
+		}, projectKey, resource.DisplayName)
 		if err != nil {
-			return nil, "", nil, fmt.Errorf("error creating user resource for repository %s: %w", resource.Id.Resource, err)
+			return nil, "", nil, err
 		}
 
-		membershipGrant := grant.NewGrant(resource, member.Permission, ur.Id)
-		rv = append(rv, membershipGrant)
+		err = bag.Next(nextPageToken)
+		if err != nil {
+			return nil, "", nil, err
+		}
+
+		// create a permission grant for each group in the repository
+		for _, member := range groupsPermissions {
+			grpCppy := member.Group
+			ur, err := groupResource(ctx, grpCppy.Name, resource.Id)
+			if err != nil {
+				return nil, "", nil, fmt.Errorf("error creating group resource for repository %s: %w", resource.Id.Resource, err)
+			}
+
+			membershipGrant := grant.NewGrant(resource, member.Permission, ur.Id)
+			rv = append(rv, membershipGrant)
+		}
+	case resourceTypeUser.Id:
+		usersPermissions, nextPageToken, err = r.client.ListUserRepositoryPermissions(ctx, client.PageOptions{
+			PerPage: ITEMSPERPAGE,
+			Page:    pageToken,
+		}, projectKey, resource.DisplayName)
+		if err != nil {
+			return nil, "", nil, err
+		}
+
+		err = bag.Next(nextPageToken)
+		if err != nil {
+			return nil, "", nil, err
+		}
+
+		// create a permission grant for each user in the repository
+		for _, member := range usersPermissions {
+			usrCppy := member.User
+			ur, err := userResource(ctx, &client.Users{
+				Name:         usrCppy.Name,
+				EmailAddress: usrCppy.EmailAddress,
+				Active:       usrCppy.Active,
+				DisplayName:  usrCppy.DisplayName,
+				ID:           usrCppy.ID,
+				Slug:         usrCppy.Slug,
+				Type:         usrCppy.Type,
+			}, resource.Id)
+			if err != nil {
+				return nil, "", nil, fmt.Errorf("error creating user resource for repository %s: %w", resource.Id.Resource, err)
+			}
+
+			membershipGrant := grant.NewGrant(resource, member.Permission, ur.Id)
+			rv = append(rv, membershipGrant)
+		}
+	default:
+		return nil, "", nil, fmt.Errorf("bitbucket-dc connector: invalid grant resource type: %s", bag.ResourceTypeID())
+	}
+
+	nextPageToken, err = bag.Marshal()
+	if err != nil {
+		return nil, "", nil, err
 	}
 
 	return rv, nextPageToken, nil, nil

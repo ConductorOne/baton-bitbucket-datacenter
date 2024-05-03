@@ -113,3 +113,21 @@ type UsersPermissions struct {
 	User       Users  `json:"user,omitempty"`
 	Permission string `json:"permission,omitempty"`
 }
+
+type GroupPermissionsAPIData struct {
+	Size              int                 `json:"size,omitempty"`
+	Limit             int                 `json:"limit,omitempty"`
+	IsLastPage        bool                `json:"isLastPage,omitempty"`
+	GroupsPermissions []GroupsPermissions `json:"values,omitempty"`
+	Start             int                 `json:"start,omitempty"`
+	NextPageStart     int                 `json:"nextPageStart,omitempty"`
+}
+
+type GroupsPermissions struct {
+	Group      Groups `json:"group,omitempty"`
+	Permission string `json:"permission,omitempty"`
+}
+
+type Groups struct {
+	Name string `json:"name,omitempty"`
+}

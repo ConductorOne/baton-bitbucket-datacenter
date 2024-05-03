@@ -113,7 +113,6 @@ func (g *groupBuilder) Entitlements(ctx context.Context, resource *v2.Resource, 
 	return rv, nextPageToken, nil, nil
 }
 
-// Grants always returns an empty slice for users since they don't have any entitlements.
 func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
 	var (
 		pageToken      int
