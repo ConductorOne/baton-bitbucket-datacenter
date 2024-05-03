@@ -11,7 +11,7 @@ Check out [Baton](https://github.com/conductorone/baton) to learn more about the
 To work with the connector, you can choose from multiple authentication methods. You can either use an application password with login username and generated password, an API access token, or a consumer key and secret for oauth flow.
 
 Each one of these methods are configurable with permissions (Read, Write, Admin) to access the Bitbucket API. The permissions required for this connector are:
-- Read: `Workspace`, `UserGroup`, `User`, `Project`, `Repository`
+- Read: `Group`, `User`, `Project`, `Repository`
 - Admin: `Project`, `Repository`
 
 Mentioned auth methods like API Access Tokens can be scoped to different resources, and the connector only allows the workspace-scoped token or the user-scoped password with required permissions described above.
@@ -48,8 +48,7 @@ baton resources
 
 `baton-bitbucket` will pull down information about the following Bitbucket resources:
 
-- Workspaces
-- UserGroups
+- Groups
 - Users
 - Projects
 - Repositories
