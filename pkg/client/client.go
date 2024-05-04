@@ -689,7 +689,6 @@ func (d *DataCenterClient) AddUserToGroups(ctx context.Context, groupName, userN
 		WithSetBasicAuthHeader(d.getUser(), d.getPWD()),
 		uhttp.WithJSONBody(body),
 	)
-
 	if err != nil {
 		return err
 	}
@@ -740,7 +739,6 @@ func (d *DataCenterClient) RemoveUserFromGroup(ctx context.Context, userName, gr
 		WithSetBasicAuthHeader(d.getUser(), d.getPWD()),
 		uhttp.WithJSONBody(body),
 	)
-
 	if err != nil {
 		return err
 	}
@@ -753,6 +751,92 @@ func (d *DataCenterClient) RemoveUserFromGroup(ctx context.Context, userName, gr
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		return errors.New("user not removed")
+	}
+
+	return nil
+}
+
+// UpdateUserRepositoryPermission updates user repository permission
+// https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-permission-management/#api-api-latest-projects-projectkey-repos-repositoryslug-permissions-users-put
+func (d *DataCenterClient) UpdateUserRepositoryPermission(ctx context.Context, projectKey, repositorySlug, userName string) error {
+	const (
+		REPO_READ  = "REPO_READ"
+		REPO_WRITE = "REPO_WRITE"
+		REPO_ADMIN = "REPO_ADMIN"
+	)
+	strUrl := fmt.Sprintf("%s/projects/%s/repos/%s/permissions/users?name=%s&permission=%s",
+		d.baseEndpoint,
+		projectKey,
+		repositorySlug,
+		userName,
+		REPO_ADMIN,
+	)
+	uri, err := url.Parse(strUrl)
+	if err != nil {
+		return err
+	}
+
+	req, err := d.httpClient.NewRequest(ctx,
+		http.MethodPut,
+		uri,
+		uhttp.WithAcceptJSONHeader(),
+		WithSetBasicAuthHeader(d.getUser(), d.getPWD()),
+	)
+	if err != nil {
+		return err
+	}
+
+	resp, err := d.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return errors.New("user not added")
+	}
+
+	return nil
+}
+
+// UpdateGrouprRepositoryPermission updates group repository permission
+// https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-permission-management/#api-api-latest-projects-projectkey-repos-repositoryslug-permissions-groups-put
+func (d *DataCenterClient) UpdateGrouprRepositoryPermission(ctx context.Context, projectKey, repositorySlug, userName string) error {
+	const (
+		REPO_READ  = "REPO_READ"
+		REPO_WRITE = "REPO_WRITE"
+		REPO_ADMIN = "REPO_ADMIN"
+	)
+	strUrl := fmt.Sprintf("%s/projects/%s/repos/%s/permissions/groups?name=%s&permission=%s",
+		d.baseEndpoint,
+		projectKey,
+		repositorySlug,
+		userName,
+		REPO_ADMIN,
+	)
+	uri, err := url.Parse(strUrl)
+	if err != nil {
+		return err
+	}
+
+	req, err := d.httpClient.NewRequest(ctx,
+		http.MethodPut,
+		uri,
+		uhttp.WithAcceptJSONHeader(),
+		WithSetBasicAuthHeader(d.getUser(), d.getPWD()),
+	)
+	if err != nil {
+		return err
+	}
+
+	resp, err := d.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return errors.New("group not added")
 	}
 
 	return nil
