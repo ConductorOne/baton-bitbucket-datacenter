@@ -841,3 +841,77 @@ func (d *DataCenterClient) UpdateGrouprRepositoryPermission(ctx context.Context,
 
 	return nil
 }
+
+// RevokeGroupRepositoryPermission revokes group repository permission
+// https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-permission-management/#api-api-latest-projects-projectkey-repos-repositoryslug-permissions-groups-delete
+func (d *DataCenterClient) RevokeGroupRepositoryPermission(ctx context.Context, projectKey, repositorySlug, groupName string) error {
+	strUrl := fmt.Sprintf("%s/projects/%s/repos/%s/permissions/groups?name=%s",
+		d.baseEndpoint,
+		projectKey,
+		repositorySlug,
+		groupName,
+	)
+	uri, err := url.Parse(strUrl)
+	if err != nil {
+		return err
+	}
+
+	req, err := d.httpClient.NewRequest(ctx,
+		http.MethodDelete,
+		uri,
+		uhttp.WithAcceptJSONHeader(),
+		WithSetBasicAuthHeader(d.getUser(), d.getPWD()),
+	)
+	if err != nil {
+		return err
+	}
+
+	resp, err := d.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		return errors.New("group not added")
+	}
+
+	return nil
+}
+
+// UpdateUserRepositoryPermission revokes user repository permission
+// https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-permission-management/#api-api-latest-projects-projectkey-repos-repositoryslug-permissions-users-delete
+func (d *DataCenterClient) RevokeUserRepositoryPermission(ctx context.Context, projectKey, repositorySlug, userName string) error {
+	strUrl := fmt.Sprintf("%s/projects/%s/repos/%s/permissions/users?name=%s",
+		d.baseEndpoint,
+		projectKey,
+		repositorySlug,
+		userName,
+	)
+	uri, err := url.Parse(strUrl)
+	if err != nil {
+		return err
+	}
+
+	req, err := d.httpClient.NewRequest(ctx,
+		http.MethodDelete,
+		uri,
+		uhttp.WithAcceptJSONHeader(),
+		WithSetBasicAuthHeader(d.getUser(), d.getPWD()),
+	)
+	if err != nil {
+		return err
+	}
+
+	resp, err := d.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		return errors.New("user not added")
+	}
+
+	return nil
+}

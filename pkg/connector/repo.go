@@ -277,14 +277,13 @@ func (r *repoBuilder) Grant(ctx context.Context, principal *v2.Resource, entitle
 		index := slices.IndexFunc(listUsers, func(c client.UsersPermissions) bool {
 			return c.User.ID == userId
 		})
-
 		if index != -1 {
 			l.Warn(
-				"bitbucket(dc)-connector: user already got permision to the repository",
+				"bitbucket(dc)-connector: principal already have this repository permission",
 				zap.String("principal_id", principal.Id.String()),
 				zap.String("principal_type", principal.Id.ResourceType),
 			)
-			return nil, fmt.Errorf("bitbucket(dc)-connector: user already got permision to the repository")
+			return nil, fmt.Errorf("bitbucket(dc)-connector: principal already have this repository permission")
 		}
 
 		err = r.client.UpdateUserRepositoryPermission(ctx, projectKey, repositorySlug, principal.DisplayName)
@@ -310,14 +309,13 @@ func (r *repoBuilder) Grant(ctx context.Context, principal *v2.Resource, entitle
 		index := slices.IndexFunc(listGroups, func(c client.GroupsPermissions) bool {
 			return c.Group.Name == principal.DisplayName
 		})
-
 		if index != -1 {
 			l.Warn(
-				"bitbucket(dc)-connector: group already got permision to the repository",
+				"bitbucket(dc)-connector: principal already have this repository permission",
 				zap.String("principal_id", principal.Id.String()),
 				zap.String("principal_type", principal.Id.ResourceType),
 			)
-			return nil, fmt.Errorf("bitbucket(dc)-connector: group already got permision to the repository")
+			return nil, fmt.Errorf("bitbucket(dc)-connector: principal already have this repository permission")
 		}
 
 		err = r.client.UpdateGrouprRepositoryPermission(ctx, projectKey, repositorySlug, principal.DisplayName)
@@ -338,6 +336,117 @@ func (r *repoBuilder) Grant(ctx context.Context, principal *v2.Resource, entitle
 }
 
 func (r *repoBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.Annotations, error) {
+	var (
+		projectKey     string
+		ok             bool
+		repositorySlug string
+	)
+	l := ctxzap.Extract(ctx)
+	principal := grant.Principal
+	entitlement := grant.Entitlement
+	principalIsUser := principal.Id.ResourceType == resourceTypeUser.Id
+	principalIsGroup := principal.Id.ResourceType == resourceTypeGroup.Id
+	if !principalIsUser && !principalIsGroup {
+		l.Warn(
+			"bitbucket(bk)-connector: only users and groups can have repository permissions revoked",
+			zap.String("principal_id", principal.Id.Resource),
+			zap.String("principal_type", principal.Id.ResourceType),
+		)
+
+		return nil, fmt.Errorf("bitbucket(bk)-connector: only users and groups can have repository permissions revoked")
+	}
+
+	_, _, err := ParseEntitlementID(entitlement.Id)
+	if err != nil {
+		return nil, err
+	}
+
+	groupTrait, err := rs.GetGroupTrait(entitlement.Resource)
+	if err != nil {
+		return nil, err
+	}
+
+	if projectKey, ok = rs.GetProfileStringValue(groupTrait.Profile, "repository_project_key"); !ok {
+		return nil, fmt.Errorf("repository_project_key not found")
+	}
+
+	if repositorySlug, ok = rs.GetProfileStringValue(groupTrait.Profile, "repository_full_name"); !ok {
+		return nil, fmt.Errorf("repository_full_name not found")
+	}
+
+	switch principal.Id.ResourceType {
+	case resourceTypeUser.Id:
+		userId, err := strconv.Atoi(principal.Id.Resource)
+		if err != nil {
+			return nil, err
+		}
+
+		listUsers, _, err := r.client.ListUserRepositoryPermissions(ctx, client.PageOptions{
+			PerPage: ITEMSPERPAGE,
+			Page:    0,
+		}, projectKey, repositorySlug)
+		if err != nil {
+			return nil, err
+		}
+
+		index := slices.IndexFunc(listUsers, func(c client.UsersPermissions) bool {
+			return c.User.ID == userId
+		})
+		if index == -1 {
+			l.Warn(
+				"bitbucket(dc)-connector: principal doesnt have this repository permission",
+				zap.String("principal_id", principal.Id.String()),
+				zap.String("principal_type", principal.Id.ResourceType),
+			)
+			return nil, fmt.Errorf("bitbucket(dc)-connector: principal doesnt have this repository permission")
+		}
+
+		err = r.client.RevokeUserRepositoryPermission(ctx, projectKey, repositorySlug, principal.DisplayName)
+		if err != nil {
+			return nil, fmt.Errorf("bitbucket(dc)-connector: failed to remove repository user permission: %w", err)
+		}
+
+		l.Warn("User Membership has been revoked.",
+			zap.Int64("UserID", int64(userId)),
+			zap.String("UserName", principal.DisplayName),
+			zap.String("ProjectKey", projectKey),
+			zap.String("RepositorySlug", repositorySlug),
+		)
+	case resourceTypeGroup.Id:
+		listGroups, _, err := r.client.ListGroupRepositoryPermissions(ctx, client.PageOptions{
+			PerPage: ITEMSPERPAGE,
+			Page:    0,
+		}, projectKey, repositorySlug)
+		if err != nil {
+			return nil, err
+		}
+
+		index := slices.IndexFunc(listGroups, func(c client.GroupsPermissions) bool {
+			return c.Group.Name == principal.DisplayName
+		})
+		if index == -1 {
+			l.Warn(
+				"bitbucket(dc)-connector: principal doesnt have this repository permission",
+				zap.String("principal_id", principal.Id.String()),
+				zap.String("principal_type", principal.Id.ResourceType),
+			)
+			return nil, fmt.Errorf("bitbucket(dc)-connector: principal doesnt have this repository permission")
+		}
+
+		err = r.client.RevokeGroupRepositoryPermission(ctx, projectKey, repositorySlug, principal.DisplayName)
+		if err != nil {
+			return nil, fmt.Errorf("bitbucket(dc)-connector: failed to remove repository group permission: %w", err)
+		}
+
+		l.Warn("Group Membership has been revoked.",
+			zap.String("GroupName", principal.DisplayName),
+			zap.String("ProjectKey", projectKey),
+			zap.String("RepositorySlug", repositorySlug),
+		)
+	default:
+		return nil, fmt.Errorf("bitbucket(dc) connector: invalid grant resource type: %s", principal.Id.ResourceType)
+	}
+
 	return nil, nil
 }
 
