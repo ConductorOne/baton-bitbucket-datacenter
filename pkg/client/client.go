@@ -758,18 +758,13 @@ func (d *DataCenterClient) RemoveUserFromGroup(ctx context.Context, userName, gr
 
 // UpdateUserRepositoryPermission updates user repository permission
 // https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-permission-management/#api-api-latest-projects-projectkey-repos-repositoryslug-permissions-users-put
-func (d *DataCenterClient) UpdateUserRepositoryPermission(ctx context.Context, projectKey, repositorySlug, userName string) error {
-	const (
-		repoRead  = "REPO_READ"
-		repoWrite = "REPO_WRITE"
-		reooAdmin = "REPO_ADMIN"
-	)
+func (d *DataCenterClient) UpdateUserRepositoryPermission(ctx context.Context, projectKey, repositorySlug, userName, permission string) error {
 	strUrl := fmt.Sprintf("%s/projects/%s/repos/%s/permissions/users?name=%s&permission=%s",
 		d.baseEndpoint,
 		projectKey,
 		repositorySlug,
 		userName,
-		reooAdmin,
+		permission,
 	)
 	uri, err := url.Parse(strUrl)
 	if err != nil {
@@ -801,18 +796,13 @@ func (d *DataCenterClient) UpdateUserRepositoryPermission(ctx context.Context, p
 
 // UpdateGrouprRepositoryPermission updates group repository permission
 // https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-permission-management/#api-api-latest-projects-projectkey-repos-repositoryslug-permissions-groups-put
-func (d *DataCenterClient) UpdateGrouprRepositoryPermission(ctx context.Context, projectKey, repositorySlug, groupName string) error {
-	const (
-		repoRead  = "REPO_READ"
-		repoWrite = "REPO_WRITE"
-		reooAdmin = "REPO_ADMIN"
-	)
+func (d *DataCenterClient) UpdateGrouprRepositoryPermission(ctx context.Context, projectKey, repositorySlug, groupName, permission string) error {
 	strUrl := fmt.Sprintf("%s/projects/%s/repos/%s/permissions/groups?name=%s&permission=%s",
 		d.baseEndpoint,
 		projectKey,
 		repositorySlug,
 		groupName,
-		reooAdmin,
+		permission,
 	)
 	uri, err := url.Parse(strUrl)
 	if err != nil {

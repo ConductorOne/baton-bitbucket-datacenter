@@ -230,6 +230,7 @@ func (r *repoBuilder) Grant(ctx context.Context, principal *v2.Resource, entitle
 		projectKey     string
 		ok             bool
 		repositorySlug string
+		permission     string
 	)
 	l := ctxzap.Extract(ctx)
 	if principal.Id.ResourceType != resourceTypeUser.Id && principal.Id.ResourceType != resourceTypeGroup.Id {
@@ -241,11 +242,17 @@ func (r *repoBuilder) Grant(ctx context.Context, principal *v2.Resource, entitle
 		return nil, fmt.Errorf("bitbucker(bk)-connector: only users or groups can be granted repo membership")
 	}
 
-	_, _, err := ParseEntitlementID(entitlement.Id)
+	_, permissions, err := ParseEntitlementID(entitlement.Id)
 	if err != nil {
 		return nil, err
 	}
 
+	switch permissions[len(permissions)-1] {
+	case "REPO_WRITE", "REPO_ADMIN", "REPO_READ":
+		permission = permissions[len(permissions)-1]
+	default:
+		return nil, fmt.Errorf("bitbucket(dc) connector: invalid permission type: %s", permissions[len(permissions)-1])
+	}
 	groupTrait, err := rs.GetGroupTrait(entitlement.Resource)
 	if err != nil {
 		return nil, err
@@ -279,14 +286,19 @@ func (r *repoBuilder) Grant(ctx context.Context, principal *v2.Resource, entitle
 		})
 		if index != -1 {
 			l.Warn(
-				"bitbucket(dc)-connector: principal already have this repository permission",
+				"bitbucket(dc)-connector: user already have this repository permission",
 				zap.String("principal_id", principal.Id.String()),
 				zap.String("principal_type", principal.Id.ResourceType),
 			)
-			return nil, fmt.Errorf("bitbucket(dc)-connector: principal already have this repository permission")
+			return nil, fmt.Errorf("bitbucket(dc)-connector: user already have this repository permission")
 		}
 
-		err = r.client.UpdateUserRepositoryPermission(ctx, projectKey, repositorySlug, principal.DisplayName)
+		err = r.client.UpdateUserRepositoryPermission(ctx,
+			projectKey,
+			repositorySlug,
+			principal.DisplayName,
+			permission,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -311,14 +323,19 @@ func (r *repoBuilder) Grant(ctx context.Context, principal *v2.Resource, entitle
 		})
 		if index != -1 {
 			l.Warn(
-				"bitbucket(dc)-connector: principal already have this repository permission",
+				"bitbucket(dc)-connector: group already have this repository permission",
 				zap.String("principal_id", principal.Id.String()),
 				zap.String("principal_type", principal.Id.ResourceType),
 			)
-			return nil, fmt.Errorf("bitbucket(dc)-connector: principal already have this repository permission")
+			return nil, fmt.Errorf("bitbucket(dc)-connector: group already have this repository permission")
 		}
 
-		err = r.client.UpdateGrouprRepositoryPermission(ctx, projectKey, repositorySlug, principal.DisplayName)
+		err = r.client.UpdateGrouprRepositoryPermission(ctx,
+			projectKey,
+			repositorySlug,
+			principal.DisplayName,
+			permission,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -329,7 +346,7 @@ func (r *repoBuilder) Grant(ctx context.Context, principal *v2.Resource, entitle
 			zap.String("RepositorySlug", repositorySlug),
 		)
 	default:
-		return nil, fmt.Errorf("bitbucket-dc connector: invalid grant resource type: %s", principal.Id.ResourceType)
+		return nil, fmt.Errorf("bitbucket(dc) connector: invalid grant resource type: %s", principal.Id.ResourceType)
 	}
 
 	return nil, nil
@@ -394,11 +411,11 @@ func (r *repoBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.
 		})
 		if index == -1 {
 			l.Warn(
-				"bitbucket(dc)-connector: principal doesnt have this repository permission",
+				"bitbucket(dc)-connector: user doesnt have this repository permission",
 				zap.String("principal_id", principal.Id.String()),
 				zap.String("principal_type", principal.Id.ResourceType),
 			)
-			return nil, fmt.Errorf("bitbucket(dc)-connector: principal doesnt have this repository permission")
+			return nil, fmt.Errorf("bitbucket(dc)-connector: user doesnt have this repository permission")
 		}
 
 		err = r.client.RevokeUserRepositoryPermission(ctx, projectKey, repositorySlug, principal.DisplayName)
@@ -426,11 +443,11 @@ func (r *repoBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.
 		})
 		if index == -1 {
 			l.Warn(
-				"bitbucket(dc)-connector: principal doesnt have this repository permission",
+				"bitbucket(dc)-connector: group doesnt have this repository permission",
 				zap.String("principal_id", principal.Id.String()),
 				zap.String("principal_type", principal.Id.ResourceType),
 			)
-			return nil, fmt.Errorf("bitbucket(dc)-connector: principal doesnt have this repository permission")
+			return nil, fmt.Errorf("bitbucket(dc)-connector: group doesnt have this repository permission")
 		}
 
 		err = r.client.RevokeGroupRepositoryPermission(ctx, projectKey, repositorySlug, principal.DisplayName)
