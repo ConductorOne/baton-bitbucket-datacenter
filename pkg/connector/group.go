@@ -35,8 +35,19 @@ func (g *groupBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId
 		err       error
 		rv        []*v2.Resource
 	)
-	if pToken.Token != "" {
-		pageToken, err = strconv.Atoi(pToken.Token)
+	_, bag, err := unmarshalSkipToken(pToken)
+	if err != nil {
+		return nil, "", nil, err
+	}
+
+	if bag.Current() == nil {
+		bag.Push(pagination.PageState{
+			ResourceTypeID: resourceTypeGroup.Id,
+		})
+	}
+
+	if bag.Current().Token != "" {
+		pageToken, err = strconv.Atoi(bag.Current().Token)
 		if err != nil {
 			return nil, "", nil, err
 		}
@@ -50,6 +61,11 @@ func (g *groupBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId
 		return nil, "", nil, err
 	}
 
+	err = bag.Next(nextPageToken)
+	if err != nil {
+		return nil, "", nil, err
+	}
+
 	for _, group := range groups {
 		groupCopy := group
 		ur, err := groupResource(ctx, groupCopy, parentResourceID)
@@ -57,6 +73,11 @@ func (g *groupBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId
 			return nil, "", nil, err
 		}
 		rv = append(rv, ur)
+	}
+
+	nextPageToken, err = bag.Marshal()
+	if err != nil {
+		return nil, "", nil, err
 	}
 
 	return rv, nextPageToken, nil, nil
@@ -122,8 +143,19 @@ func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 		rv             []*v2.Grant
 		rolePermission string = memberEntitlement
 	)
-	if pToken.Token != "" {
-		pageToken, err = strconv.Atoi(pToken.Token)
+	_, bag, err := unmarshalSkipToken(pToken)
+	if err != nil {
+		return nil, "", nil, err
+	}
+
+	if bag.Current() == nil {
+		bag.Push(pagination.PageState{
+			ResourceTypeID: resourceTypeGroup.Id,
+		})
+	}
+
+	if bag.Current().Token != "" {
+		pageToken, err = strconv.Atoi(bag.Current().Token)
 		if err != nil {
 			return nil, "", nil, err
 		}
@@ -133,6 +165,11 @@ func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 		PerPage: ITEMSPERPAGE,
 		Page:    pageToken,
 	}, resource.Id.Resource)
+	if err != nil {
+		return nil, "", nil, err
+	}
+
+	err = bag.Next(nextPageToken)
 	if err != nil {
 		return nil, "", nil, err
 	}
@@ -166,6 +203,11 @@ func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 
 		membershipGrant := grant.NewGrant(resource, rolePermission, ur.Id)
 		rv = append(rv, membershipGrant)
+	}
+
+	nextPageToken, err = bag.Marshal()
+	if err != nil {
+		return nil, "", nil, err
 	}
 
 	return rv, nextPageToken, nil, nil

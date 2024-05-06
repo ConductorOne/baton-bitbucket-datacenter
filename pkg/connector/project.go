@@ -40,8 +40,19 @@ func (p *projectBuilder) List(ctx context.Context, parentResourceID *v2.Resource
 		err       error
 		rv        []*v2.Resource
 	)
-	if pToken.Token != "" {
-		pageToken, err = strconv.Atoi(pToken.Token)
+	_, bag, err := unmarshalSkipToken(pToken)
+	if err != nil {
+		return nil, "", nil, err
+	}
+
+	if bag.Current() == nil {
+		bag.Push(pagination.PageState{
+			ResourceTypeID: resourceTypeProject.Id,
+		})
+	}
+
+	if bag.Current().Token != "" {
+		pageToken, err = strconv.Atoi(bag.Current().Token)
 		if err != nil {
 			return nil, "", nil, err
 		}
@@ -55,6 +66,11 @@ func (p *projectBuilder) List(ctx context.Context, parentResourceID *v2.Resource
 		return nil, "", nil, err
 	}
 
+	err = bag.Next(nextPageToken)
+	if err != nil {
+		return nil, "", nil, err
+	}
+
 	for _, proj := range projects {
 		projCopy := proj
 		ur, err := projectResource(ctx, &projCopy, parentResourceID)
@@ -62,6 +78,11 @@ func (p *projectBuilder) List(ctx context.Context, parentResourceID *v2.Resource
 			return nil, "", nil, err
 		}
 		rv = append(rv, ur)
+	}
+
+	nextPageToken, err = bag.Marshal()
+	if err != nil {
+		return nil, "", nil, err
 	}
 
 	return rv, nextPageToken, nil, nil
@@ -96,8 +117,19 @@ func (p *projectBuilder) Grants(ctx context.Context, resource *v2.Resource, pTok
 		projectKey string
 		ok         bool
 	)
-	if pToken.Token != "" {
-		pageToken, err = strconv.Atoi(pToken.Token)
+	_, bag, err := unmarshalSkipToken(pToken)
+	if err != nil {
+		return nil, "", nil, err
+	}
+
+	if bag.Current() == nil {
+		bag.Push(pagination.PageState{
+			ResourceTypeID: resourceTypeProject.Id,
+		})
+	}
+
+	if bag.Current().Token != "" {
+		pageToken, err = strconv.Atoi(bag.Current().Token)
 		if err != nil {
 			return nil, "", nil, err
 		}
@@ -120,6 +152,11 @@ func (p *projectBuilder) Grants(ctx context.Context, resource *v2.Resource, pTok
 		return nil, "", nil, err
 	}
 
+	err = bag.Next(nextPageToken)
+	if err != nil {
+		return nil, "", nil, err
+	}
+
 	for _, member := range members {
 		usrCppy := member.User
 		ur, err := userResource(ctx, &client.Users{
@@ -137,6 +174,11 @@ func (p *projectBuilder) Grants(ctx context.Context, resource *v2.Resource, pTok
 
 		membershipGrant := grant.NewGrant(resource, member.Permission, ur.Id)
 		rv = append(rv, membershipGrant)
+	}
+
+	nextPageToken, err = bag.Marshal()
+	if err != nil {
+		return nil, "", nil, err
 	}
 
 	return rv, nextPageToken, nil, nil

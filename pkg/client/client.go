@@ -792,7 +792,7 @@ func (d *DataCenterClient) UpdateUserRepositoryPermission(ctx context.Context, p
 	}
 
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusNoContent {
 		return errors.New("user not added")
 	}
 
@@ -801,7 +801,7 @@ func (d *DataCenterClient) UpdateUserRepositoryPermission(ctx context.Context, p
 
 // UpdateGrouprRepositoryPermission updates group repository permission
 // https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-permission-management/#api-api-latest-projects-projectkey-repos-repositoryslug-permissions-groups-put
-func (d *DataCenterClient) UpdateGrouprRepositoryPermission(ctx context.Context, projectKey, repositorySlug, userName string) error {
+func (d *DataCenterClient) UpdateGrouprRepositoryPermission(ctx context.Context, projectKey, repositorySlug, groupName string) error {
 	const (
 		repoRead  = "REPO_READ"
 		repoWrite = "REPO_WRITE"
@@ -811,7 +811,7 @@ func (d *DataCenterClient) UpdateGrouprRepositoryPermission(ctx context.Context,
 		d.baseEndpoint,
 		projectKey,
 		repositorySlug,
-		userName,
+		groupName,
 		reooAdmin,
 	)
 	uri, err := url.Parse(strUrl)
@@ -835,7 +835,7 @@ func (d *DataCenterClient) UpdateGrouprRepositoryPermission(ctx context.Context,
 	}
 
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusNoContent {
 		return errors.New("group not added")
 	}
 
