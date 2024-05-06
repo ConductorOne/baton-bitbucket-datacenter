@@ -248,7 +248,7 @@ func (r *repoBuilder) Grant(ctx context.Context, principal *v2.Resource, entitle
 	}
 
 	switch permissions[len(permissions)-1] {
-	case "REPO_WRITE", "REPO_ADMIN", "REPO_READ":
+	case roleRepoWrite, roleRepoAdmin, roleRepoRead:
 		permission = permissions[len(permissions)-1]
 	default:
 		return nil, fmt.Errorf("bitbucket(dc) connector: invalid permission type: %s", permissions[len(permissions)-1])
