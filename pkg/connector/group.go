@@ -193,16 +193,18 @@ func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 		})
 		if userPos != NF {
 			userPermission = userPermissions[userPos].Permission
-			groupPos := slices.IndexFunc(groupPermissions, func(c client.GroupsPermissions) bool {
-				return c.Group.Name == resource.Id.Resource
-			})
-			if groupPos != NF {
-				groupPermission = groupPermissions[groupPos].Permission
-				if userPermission == groupPermission {
-					membershipGrant := grant.NewGrant(resource, userPermission, ur.Id)
-					rv = append(rv, membershipGrant)
-				}
-			}
+		}
+
+		groupPos := slices.IndexFunc(groupPermissions, func(c client.GroupsPermissions) bool {
+			return c.Group.Name == resource.Id.Resource
+		})
+		if groupPos != NF {
+			groupPermission = groupPermissions[groupPos].Permission
+		}
+
+		if userPermission == groupPermission {
+			membershipGrant := grant.NewGrant(resource, userPermission, ur.Id)
+			rv = append(rv, membershipGrant)
 		}
 	}
 
