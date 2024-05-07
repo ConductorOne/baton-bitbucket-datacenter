@@ -31,6 +31,8 @@ const (
 
 var repositoryRoles = []string{roleRepoRead, roleRepoWrite, roleRepoAdmin, roleRepoCreate}
 
+const NF = -1
+
 func (r *repoBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
 	return r.resourceType
 }
@@ -273,10 +275,7 @@ func (r *repoBuilder) Grant(ctx context.Context, principal *v2.Resource, entitle
 			return nil, err
 		}
 
-		listUsers, _, err := r.client.ListUserRepositoryPermissions(ctx, client.PageOptions{
-			PerPage: ITEMSPERPAGE,
-			Page:    0,
-		}, projectKey, repositorySlug)
+		listUsers, err := listUserRepositoryPermissions(ctx, r.client, projectKey, repositorySlug)
 		if err != nil {
 			return nil, err
 		}
@@ -284,7 +283,7 @@ func (r *repoBuilder) Grant(ctx context.Context, principal *v2.Resource, entitle
 		index := slices.IndexFunc(listUsers, func(c client.UsersPermissions) bool {
 			return c.User.ID == userId
 		})
-		if index != -1 {
+		if index != NF {
 			l.Warn(
 				"bitbucket(dc)-connector: user already have this repository permission",
 				zap.String("principal_id", principal.Id.String()),
@@ -310,10 +309,7 @@ func (r *repoBuilder) Grant(ctx context.Context, principal *v2.Resource, entitle
 			zap.String("RepositorySlug", repositorySlug),
 		)
 	case resourceTypeGroup.Id:
-		listGroups, _, err := r.client.ListGroupRepositoryPermissions(ctx, client.PageOptions{
-			PerPage: ITEMSPERPAGE,
-			Page:    0,
-		}, projectKey, repositorySlug)
+		listGroups, err := listGroupRepositoryPermissions(ctx, r.client, projectKey, repositorySlug)
 		if err != nil {
 			return nil, err
 		}
@@ -321,7 +317,7 @@ func (r *repoBuilder) Grant(ctx context.Context, principal *v2.Resource, entitle
 		index := slices.IndexFunc(listGroups, func(c client.GroupsPermissions) bool {
 			return c.Group.Name == principal.DisplayName
 		})
-		if index != -1 {
+		if index != NF {
 			l.Warn(
 				"bitbucket(dc)-connector: group already have this repository permission",
 				zap.String("principal_id", principal.Id.String()),
@@ -398,10 +394,7 @@ func (r *repoBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.
 			return nil, err
 		}
 
-		listUsers, _, err := r.client.ListUserRepositoryPermissions(ctx, client.PageOptions{
-			PerPage: ITEMSPERPAGE,
-			Page:    0,
-		}, projectKey, repositorySlug)
+		listUsers, err := listUserRepositoryPermissions(ctx, r.client, projectKey, repositorySlug)
 		if err != nil {
 			return nil, err
 		}
@@ -430,10 +423,7 @@ func (r *repoBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.
 			zap.String("RepositorySlug", repositorySlug),
 		)
 	case resourceTypeGroup.Id:
-		listGroups, _, err := r.client.ListGroupRepositoryPermissions(ctx, client.PageOptions{
-			PerPage: ITEMSPERPAGE,
-			Page:    0,
-		}, projectKey, repositorySlug)
+		listGroups, err := listGroupRepositoryPermissions(ctx, r.client, projectKey, repositorySlug)
 		if err != nil {
 			return nil, err
 		}
@@ -441,7 +431,7 @@ func (r *repoBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.
 		index := slices.IndexFunc(listGroups, func(c client.GroupsPermissions) bool {
 			return c.Group.Name == principal.DisplayName
 		})
-		if index == -1 {
+		if index == NF {
 			l.Warn(
 				"bitbucket(dc)-connector: group doesnt have this repository permission",
 				zap.String("principal_id", principal.Id.String()),

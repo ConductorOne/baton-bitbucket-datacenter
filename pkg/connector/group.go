@@ -149,13 +149,13 @@ func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 	}
 
 	// Get user permissions
-	userPermissions, err := ListGlobalUserPermissions(ctx, g.client)
+	userPermissions, err := listGlobalUserPermissions(ctx, g.client)
 	if err != nil {
 		return nil, "", nil, err
 	}
 
 	// Get group permissions
-	groupPermissions, err := ListGlobalGroupPermissions(ctx, g.client)
+	groupPermissions, err := listGlobalGroupPermissions(ctx, g.client)
 	if err != nil {
 		return nil, "", nil, err
 	}
@@ -216,62 +216,6 @@ func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 	return rv, nextPageToken, nil, nil
 }
 
-func ListGlobalUserPermissions(ctx context.Context, cli *client.DataCenterClient) ([]client.UsersPermissions, error) {
-	var (
-		page           int
-		lstPermissions []client.UsersPermissions
-	)
-	for {
-		permissions, nextPageToken, err := cli.ListGlobalUserPermissions(ctx, client.PageOptions{
-			PerPage: ITEMSPERPAGE,
-			Page:    page,
-		})
-		if err != nil {
-			return nil, err
-		}
-
-		lstPermissions = append(lstPermissions, permissions...)
-		if nextPageToken == "" {
-			break
-		}
-
-		page, err = strconv.Atoi(nextPageToken)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	return lstPermissions, nil
-}
-
-func ListGlobalGroupPermissions(ctx context.Context, cli *client.DataCenterClient) ([]client.GroupsPermissions, error) {
-	var (
-		page           int
-		lstPermissions []client.GroupsPermissions
-	)
-	for {
-		permissions, nextPageToken, err := cli.ListGlobalGroupPermissions(ctx, client.PageOptions{
-			PerPage: ITEMSPERPAGE,
-			Page:    page,
-		})
-		if err != nil {
-			return nil, err
-		}
-
-		lstPermissions = append(lstPermissions, permissions...)
-		if nextPageToken == "" {
-			break
-		}
-
-		page, err = strconv.Atoi(nextPageToken)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	return lstPermissions, nil
-}
-
 func (g *groupBuilder) Grant(ctx context.Context, principal *v2.Resource, entitlement *v2.Entitlement) (annotations.Annotations, error) {
 	l := ctxzap.Extract(ctx)
 	if principal.Id.ResourceType != resourceTypeUser.Id {
@@ -294,10 +238,7 @@ func (g *groupBuilder) Grant(ctx context.Context, principal *v2.Resource, entitl
 	}
 
 	// Check if user is already a member of the group
-	members, _, err := g.client.ListGroupMembers(ctx, client.PageOptions{
-		PerPage: ITEMSPERPAGE,
-		Page:    0,
-	}, groupResourceId.Resource)
+	members, err := listGroupMembers(ctx, g.client, groupResourceId.Resource)
 	if err != nil {
 		return nil, fmt.Errorf("bitbucket(dc)-connector: failed to get group members: %w", err)
 	}
@@ -354,10 +295,7 @@ func (g *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations
 	}
 
 	// Check if user is member of the group
-	groupMembers, _, err := g.client.ListGroupMembers(ctx, client.PageOptions{
-		PerPage: ITEMSPERPAGE,
-		Page:    0,
-	}, groupResourceId.Resource)
+	groupMembers, err := listGroupMembers(ctx, g.client, groupResourceId.Resource)
 	if err != nil {
 		return nil, fmt.Errorf("bitbucket(dc)-connector: failed to get group members: %w", err)
 	}

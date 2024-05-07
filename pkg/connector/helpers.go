@@ -229,3 +229,143 @@ func ParseEntitlementID(id string) (*v2.ResourceId, []string, error) {
 	}
 	return resourceId, parts, nil
 }
+
+func listGlobalUserPermissions(ctx context.Context, cli *client.DataCenterClient) ([]client.UsersPermissions, error) {
+	var (
+		page           int
+		lstPermissions []client.UsersPermissions
+	)
+	for {
+		permissions, nextPageToken, err := cli.ListGlobalUserPermissions(ctx, client.PageOptions{
+			PerPage: ITEMSPERPAGE,
+			Page:    page,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		lstPermissions = append(lstPermissions, permissions...)
+		if nextPageToken == "" {
+			break
+		}
+
+		page, err = strconv.Atoi(nextPageToken)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return lstPermissions, nil
+}
+
+func listGlobalGroupPermissions(ctx context.Context, cli *client.DataCenterClient) ([]client.GroupsPermissions, error) {
+	var (
+		page           int
+		lstPermissions []client.GroupsPermissions
+	)
+	for {
+		permissions, nextPageToken, err := cli.ListGlobalGroupPermissions(ctx, client.PageOptions{
+			PerPage: ITEMSPERPAGE,
+			Page:    page,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		lstPermissions = append(lstPermissions, permissions...)
+		if nextPageToken == "" {
+			break
+		}
+
+		page, err = strconv.Atoi(nextPageToken)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return lstPermissions, nil
+}
+
+func listGroupMembers(ctx context.Context, cli *client.DataCenterClient, groupName string) ([]client.Members, error) {
+	var (
+		page       int
+		lstMembers []client.Members
+	)
+	for {
+		listGroup, nextPageToken, err := cli.ListGroupMembers(ctx, client.PageOptions{
+			PerPage: ITEMSPERPAGE,
+			Page:    page,
+		}, groupName)
+		if err != nil {
+			return nil, err
+		}
+
+		lstMembers = append(lstMembers, listGroup...)
+		if nextPageToken == "" {
+			break
+		}
+
+		page, err = strconv.Atoi(nextPageToken)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return lstMembers, nil
+}
+
+func listUserRepositoryPermissions(ctx context.Context, cli *client.DataCenterClient, projectKey, repositorySlug string) ([]client.UsersPermissions, error) {
+	var (
+		page           int
+		lstPermissions []client.UsersPermissions
+	)
+	for {
+		permissions, nextPageToken, err := cli.ListUserRepositoryPermissions(ctx, client.PageOptions{
+			PerPage: ITEMSPERPAGE,
+			Page:    page,
+		}, projectKey, repositorySlug)
+		if err != nil {
+			return nil, err
+		}
+
+		lstPermissions = append(lstPermissions, permissions...)
+		if nextPageToken == "" {
+			break
+		}
+
+		page, err = strconv.Atoi(nextPageToken)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return lstPermissions, nil
+}
+
+func listGroupRepositoryPermissions(ctx context.Context, cli *client.DataCenterClient, projectKey, repositorySlug string) ([]client.GroupsPermissions, error) {
+	var (
+		page           int
+		lstPermissions []client.GroupsPermissions
+	)
+	for {
+		permissions, nextPageToken, err := cli.ListGroupRepositoryPermissions(ctx, client.PageOptions{
+			PerPage: ITEMSPERPAGE,
+			Page:    page,
+		}, projectKey, repositorySlug)
+		if err != nil {
+			return nil, err
+		}
+
+		lstPermissions = append(lstPermissions, permissions...)
+		if nextPageToken == "" {
+			break
+		}
+
+		page, err = strconv.Atoi(nextPageToken)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return lstPermissions, nil
+}
