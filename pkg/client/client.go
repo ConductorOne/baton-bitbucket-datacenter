@@ -397,7 +397,7 @@ func (d *DataCenterClient) ListGroupMembers(ctx context.Context, opts PageOption
 
 // GetGlobalPermissions get users with a global permission
 // https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-permission-management/#api-api-latest-admin-permissions-users-get
-func (d *DataCenterClient) GetGlobalPermissions(ctx context.Context, startPage, limit string) ([]UsersPermissions, Page, error) {
+func (d *DataCenterClient) GetGlobalUserPermissions(ctx context.Context, startPage, limit string) ([]UsersPermissions, Page, error) {
 	var (
 		permissionsData GlobalPermissionsAPIData
 		page            Page
@@ -447,9 +447,59 @@ func (d *DataCenterClient) GetGlobalPermissions(ctx context.Context, startPage, 
 	return permissionsData.UsersPermissions, page, nil
 }
 
-func (d *DataCenterClient) ListGlobalPermissions(ctx context.Context, opts PageOptions) ([]UsersPermissions, string, error) {
+func (d *DataCenterClient) GetGlobalGroupPermissions(ctx context.Context, startPage, limit string) ([]GroupsPermissions, Page, error) {
+	var (
+		permissionsData GlobalGroupPermissionsAPIData
+		page            Page
+		sPage, nPage    = "0", "0"
+	)
+	strUrl, err := url.JoinPath(d.baseEndpoint, "/admin/permissions/groups")
+	if err != nil {
+		return nil, Page{}, err
+	}
+
+	uri, err := url.Parse(strUrl)
+	if err != nil {
+		return nil, Page{}, err
+	}
+
+	if startPage != "" {
+		sPage = startPage
+	}
+
+	setRawQuery(uri, sPage, limit)
+	req, err := d.httpClient.NewRequest(ctx,
+		http.MethodGet,
+		uri,
+		uhttp.WithAcceptJSONHeader(),
+		WithSetBasicAuthHeader(d.getUser(), d.getPWD()),
+	)
+	if err != nil {
+		return nil, Page{}, err
+	}
+
+	resp, err := d.httpClient.Do(req, uhttp.WithJSONResponse(&permissionsData))
+	if err != nil {
+		return nil, Page{}, err
+	}
+
+	defer resp.Body.Close()
+	sPage = strconv.Itoa(permissionsData.Start)
+	nPage = strconv.Itoa(permissionsData.NextPageStart)
+	if !permissionsData.IsLastPage {
+		page = Page{
+			PreviousPage: &sPage,
+			NextPage:     &nPage,
+			Count:        int64(permissionsData.Size),
+		}
+	}
+
+	return permissionsData.GroupsPermissions, page, nil
+}
+
+func (d *DataCenterClient) ListGlobalUserPermissions(ctx context.Context, opts PageOptions) ([]UsersPermissions, string, error) {
 	var nextPageToken string = ""
-	usersPermissions, page, err := d.GetGlobalPermissions(ctx,
+	usersPermissions, page, err := d.GetGlobalUserPermissions(ctx,
 		strconv.Itoa(opts.Page),
 		strconv.Itoa(opts.PerPage),
 	)
@@ -462,6 +512,23 @@ func (d *DataCenterClient) ListGlobalPermissions(ctx context.Context, opts PageO
 	}
 
 	return usersPermissions, nextPageToken, err
+}
+
+func (d *DataCenterClient) ListGlobalGroupPermissions(ctx context.Context, opts PageOptions) ([]GroupsPermissions, string, error) {
+	var nextPageToken string = ""
+	groupsPermissions, page, err := d.GetGlobalGroupPermissions(ctx,
+		strconv.Itoa(opts.Page),
+		strconv.Itoa(opts.PerPage),
+	)
+	if err != nil {
+		return groupsPermissions, "", err
+	}
+
+	if page.HasNext() {
+		nextPageToken = *page.NextPage
+	}
+
+	return groupsPermissions, nextPageToken, err
 }
 
 func (d *DataCenterClient) GetUserRepositoryPermissions(ctx context.Context, startPage, limit, projectKey, repositorySlug string) ([]UsersPermissions, Page, error) {

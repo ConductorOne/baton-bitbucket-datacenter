@@ -109,6 +109,15 @@ type GlobalPermissionsAPIData struct {
 	NextPageStart    int                `json:"nextPageStart,omitempty"`
 }
 
+type GlobalGroupPermissionsAPIData struct {
+	Size              int                 `json:"size,omitempty"`
+	Limit             int                 `json:"limit,omitempty"`
+	IsLastPage        bool                `json:"isLastPage,omitempty"`
+	GroupsPermissions []GroupsPermissions `json:"values,omitempty"`
+	Start             int                 `json:"start,omitempty"`
+	NextPageStart     int                 `json:"nextPageStart,omitempty"`
+}
+
 type UsersPermissions struct {
 	User       Users  `json:"user,omitempty"`
 	Permission string `json:"permission,omitempty"`

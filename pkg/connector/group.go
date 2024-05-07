@@ -21,8 +21,6 @@ type groupBuilder struct {
 	client       *client.DataCenterClient
 }
 
-const memberEntitlement = "MEMBER"
-
 func (g *groupBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
 	return g.resourceType
 }
@@ -90,18 +88,6 @@ func (g *groupBuilder) Entitlements(ctx context.Context, resource *v2.Resource, 
 		err       error
 		rv        []*v2.Entitlement
 	)
-	assignmentOptions := []ent.EntitlementOption{
-		ent.WithGrantableTo(resourceTypeUser),
-		ent.WithDisplayName(fmt.Sprintf("%s Group %s", resource.DisplayName, memberEntitlement)),
-		ent.WithDescription(fmt.Sprintf("Access to %s group in Bitbucket DC", resource.DisplayName)),
-	}
-
-	// create membership entitlement
-	rv = append(rv, ent.NewAssignmentEntitlement(
-		resource,
-		memberEntitlement,
-		assignmentOptions...,
-	))
 
 	if pToken.Token != "" {
 		pageToken, err = strconv.Atoi(pToken.Token)
@@ -110,7 +96,7 @@ func (g *groupBuilder) Entitlements(ctx context.Context, resource *v2.Resource, 
 		}
 	}
 
-	permissions, nextPageToken, err := g.client.ListGlobalPermissions(ctx, client.PageOptions{
+	permissions, nextPageToken, err := g.client.ListGlobalUserPermissions(ctx, client.PageOptions{
 		PerPage: ITEMSPERPAGE,
 		Page:    pageToken,
 	})
@@ -138,11 +124,12 @@ func (g *groupBuilder) Entitlements(ctx context.Context, resource *v2.Resource, 
 
 func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
 	var (
-		pageToken      int
-		err            error
-		rv             []*v2.Grant
-		rolePermission string = memberEntitlement
+		pageToken                       int
+		err                             error
+		rv                              []*v2.Grant
+		userPermission, groupPermission string
 	)
+	const NF = -1
 	_, bag, err := unmarshalSkipToken(pToken)
 	if err != nil {
 		return nil, "", nil, err
@@ -161,7 +148,19 @@ func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 		}
 	}
 
-	members, nextPageToken, err := g.client.ListGroupMembers(ctx, client.PageOptions{
+	// Get user permissions
+	userPermissions, err := ListGlobalUserPermissions(ctx, g.client)
+	if err != nil {
+		return nil, "", nil, err
+	}
+
+	// Get group permissions
+	groupPermissions, err := ListGlobalGroupPermissions(ctx, g.client)
+	if err != nil {
+		return nil, "", nil, err
+	}
+
+	groupMembers, nextPageToken, err := g.client.ListGroupMembers(ctx, client.PageOptions{
 		PerPage: ITEMSPERPAGE,
 		Page:    pageToken,
 	}, resource.Id.Resource)
@@ -174,7 +173,7 @@ func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 		return nil, "", nil, err
 	}
 
-	for _, member := range members {
+	for _, member := range groupMembers {
 		usrCppy := member
 		ur, err := userResource(ctx, &client.Users{
 			Name:         usrCppy.Name,
@@ -189,20 +188,22 @@ func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 			return nil, "", nil, fmt.Errorf("error creating user resource for group %s: %w", resource.Id.Resource, err)
 		}
 
-		permissions, _, err := g.client.ListGlobalPermissions(ctx, client.PageOptions{})
-		if err != nil {
-			return nil, "", nil, err
-		}
-
-		index := slices.IndexFunc(permissions, func(c client.UsersPermissions) bool {
+		userPos := slices.IndexFunc(userPermissions, func(c client.UsersPermissions) bool {
 			return c.User.ID == usrCppy.ID
 		})
-		if index != -1 {
-			rolePermission = permissions[index].Permission
+		if userPos != NF {
+			userPermission = userPermissions[userPos].Permission
+			groupPos := slices.IndexFunc(groupPermissions, func(c client.GroupsPermissions) bool {
+				return c.Group.Name == resource.Id.Resource
+			})
+			if groupPos != NF {
+				groupPermission = groupPermissions[groupPos].Permission
+				if userPermission == groupPermission {
+					membershipGrant := grant.NewGrant(resource, userPermission, ur.Id)
+					rv = append(rv, membershipGrant)
+				}
+			}
 		}
-
-		membershipGrant := grant.NewGrant(resource, rolePermission, ur.Id)
-		rv = append(rv, membershipGrant)
 	}
 
 	nextPageToken, err = bag.Marshal()
@@ -211,6 +212,62 @@ func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 	}
 
 	return rv, nextPageToken, nil, nil
+}
+
+func ListGlobalUserPermissions(ctx context.Context, cli *client.DataCenterClient) ([]client.UsersPermissions, error) {
+	var (
+		page           int
+		lstPermissions []client.UsersPermissions
+	)
+	for {
+		permissions, nextPageToken, err := cli.ListGlobalUserPermissions(ctx, client.PageOptions{
+			PerPage: ITEMSPERPAGE,
+			Page:    page,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		lstPermissions = append(lstPermissions, permissions...)
+		if nextPageToken == "" {
+			break
+		}
+
+		page, err = strconv.Atoi(nextPageToken)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return lstPermissions, nil
+}
+
+func ListGlobalGroupPermissions(ctx context.Context, cli *client.DataCenterClient) ([]client.GroupsPermissions, error) {
+	var (
+		page           int
+		lstPermissions []client.GroupsPermissions
+	)
+	for {
+		permissions, nextPageToken, err := cli.ListGlobalGroupPermissions(ctx, client.PageOptions{
+			PerPage: ITEMSPERPAGE,
+			Page:    page,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		lstPermissions = append(lstPermissions, permissions...)
+		if nextPageToken == "" {
+			break
+		}
+
+		page, err = strconv.Atoi(nextPageToken)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return lstPermissions, nil
 }
 
 func (g *groupBuilder) Grant(ctx context.Context, principal *v2.Resource, entitlement *v2.Entitlement) (annotations.Annotations, error) {
@@ -295,15 +352,19 @@ func (g *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations
 	}
 
 	// Check if user is member of the group
-	members, _, err := g.client.ListGroupMembers(ctx, client.PageOptions{
+	groupMembers, _, err := g.client.ListGroupMembers(ctx, client.PageOptions{
 		PerPage: ITEMSPERPAGE,
 		Page:    0,
 	}, groupResourceId.Resource)
 	if err != nil {
 		return nil, fmt.Errorf("bitbucket(dc)-connector: failed to get group members: %w", err)
 	}
-
-	index := slices.IndexFunc(members, func(c client.Members) bool {
+	fmt.Println("-- members")
+	fmt.Println(groupMembers)
+	for _, member := range groupMembers {
+		fmt.Println(member.ID)
+	}
+	index := slices.IndexFunc(groupMembers, func(c client.Members) bool {
 		return c.ID == userId
 	})
 	if index == -1 {
@@ -336,3 +397,18 @@ func newGroupBuilder(c *client.DataCenterClient) *groupBuilder {
 		client:       c,
 	}
 }
+
+// System admin: Has full control over Bitbucket - can modify system configuration properties and all application settings,
+// and has full access to all projects and repositories. We recommend granting this permission to as few users as possible.
+
+// Admin:
+// Has access to most settings required to administer Bitbucket on a daily basis.
+// Can add new users, administer permissions and change general application settings.
+// Administrators have full access to all projects and repositories.
+
+// Project creator:
+// Can create new projects and repositories.
+// To foster collaboration, we recommend granting project creation permissions to as many users as possible.
+
+// Bitbucket User: Can log in to Bitbucket and access projects which have explicitly granted permission to this role.
+// Note that all Bitbucket users will count towards your license limit.
