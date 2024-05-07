@@ -168,6 +168,13 @@ func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 		return nil, "", nil, err
 	}
 
+	groupPos := slices.IndexFunc(groupPermissions, func(c client.GroupsPermissions) bool {
+		return c.Group.Name == resource.Id.Resource
+	})
+	if groupPos != NF {
+		groupPermission = groupPermissions[groupPos].Permission
+	}
+
 	err = bag.Next(nextPageToken)
 	if err != nil {
 		return nil, "", nil, err
@@ -193,13 +200,6 @@ func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 		})
 		if userPos != NF {
 			userPermission = userPermissions[userPos].Permission
-		}
-
-		groupPos := slices.IndexFunc(groupPermissions, func(c client.GroupsPermissions) bool {
-			return c.Group.Name == resource.Id.Resource
-		})
-		if groupPos != NF {
-			groupPermission = groupPermissions[groupPos].Permission
 		}
 
 		if userPermission == groupPermission {
