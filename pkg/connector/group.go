@@ -182,6 +182,7 @@ func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 
 	for _, member := range groupMembers {
 		usrCppy := member
+		userPermission = "LICENSED_USER"
 		ur, err := userResource(ctx, &client.Users{
 			Name:         usrCppy.Name,
 			EmailAddress: usrCppy.EmailAddress,
@@ -205,7 +206,11 @@ func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 		if userPermission == groupPermission {
 			membershipGrant := grant.NewGrant(resource, userPermission, ur.Id)
 			rv = append(rv, membershipGrant)
+			continue
 		}
+
+		membershipGrant := grant.NewGrant(resource, userPermission, ur.Id)
+		rv = append(rv, membershipGrant)
 	}
 
 	nextPageToken, err = bag.Marshal()
@@ -334,6 +339,7 @@ func newGroupBuilder(c *client.DataCenterClient) *groupBuilder {
 	}
 }
 
+// ** list of permissions **
 // System admin: Has full control over Bitbucket - can modify system configuration properties and all application settings,
 // and has full access to all projects and repositories. We recommend granting this permission to as few users as possible.
 

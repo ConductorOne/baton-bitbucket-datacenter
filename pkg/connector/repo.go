@@ -402,7 +402,7 @@ func (r *repoBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.
 		index := slices.IndexFunc(listUsers, func(c client.UsersPermissions) bool {
 			return c.User.ID == userId
 		})
-		if index == -1 {
+		if index == NF {
 			l.Warn(
 				"bitbucket(dc)-connector: user doesnt have this repository permission",
 				zap.String("principal_id", principal.Id.String()),
