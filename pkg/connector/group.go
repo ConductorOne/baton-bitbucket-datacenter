@@ -359,11 +359,7 @@ func (g *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations
 	if err != nil {
 		return nil, fmt.Errorf("bitbucket(dc)-connector: failed to get group members: %w", err)
 	}
-	fmt.Println("-- members")
-	fmt.Println(groupMembers)
-	for _, member := range groupMembers {
-		fmt.Println(member.ID)
-	}
+
 	index := slices.IndexFunc(groupMembers, func(c client.Members) bool {
 		return c.ID == userId
 	})
