@@ -326,7 +326,7 @@ func (r *repoBuilder) Grant(ctx context.Context, principal *v2.Resource, entitle
 			return nil, fmt.Errorf("bitbucket(dc)-connector: group already have this repository permission")
 		}
 
-		err = r.client.UpdateGrouprRepositoryPermission(ctx,
+		err = r.client.UpdateGroupRepositoryPermission(ctx,
 			projectKey,
 			repositorySlug,
 			principal.DisplayName,

@@ -925,9 +925,9 @@ func (d *DataCenterClient) UpdateUserRepositoryPermission(ctx context.Context, p
 	return nil
 }
 
-// UpdateGrouprRepositoryPermission updates group repository permission
+// UpdateGroupRepositoryPermission updates group repository permission
 // https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-permission-management/#api-api-latest-projects-projectkey-repos-repositoryslug-permissions-groups-put
-func (d *DataCenterClient) UpdateGrouprRepositoryPermission(ctx context.Context, projectKey, repositorySlug, groupName, permission string) error {
+func (d *DataCenterClient) UpdateGroupRepositoryPermission(ctx context.Context, projectKey, repositorySlug, groupName, permission string) error {
 	strUrl := fmt.Sprintf("%s/projects/%s/repos/%s/permissions/groups?name=%s&permission=%s",
 		d.baseEndpoint,
 		projectKey,
@@ -1037,10 +1037,14 @@ func (d *DataCenterClient) RevokeUserRepositoryPermission(ctx context.Context, p
 	return nil
 }
 
-func (d *DataCenterClient) RevokeUserProjectPermission(ctx context.Context, projectKey string) error {
-	strUrl := fmt.Sprintf("%s/projects/%s/permissions/users",
+// RevokeUserProjectPermission
+// Revoke user project permission
+// https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-project/#api-api-latest-projects-projectkey-permissions-users-delete
+func (d *DataCenterClient) RevokeUserProjectPermission(ctx context.Context, projectKey, userName string) error {
+	strUrl := fmt.Sprintf("%s/projects/%s/permissions/users?name=%s",
 		d.baseEndpoint,
 		projectKey,
+		userName,
 	)
 	uri, err := url.Parse(strUrl)
 	if err != nil {
@@ -1065,6 +1069,119 @@ func (d *DataCenterClient) RevokeUserProjectPermission(ctx context.Context, proj
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		return errors.New("user not added")
+	}
+
+	return nil
+}
+
+// RevokeGroupProjectPermission
+// Revoke group project permission.
+// https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-project/#api-api-latest-projects-projectkey-permissions-groups-delete
+func (d *DataCenterClient) RevokeGroupProjectPermission(ctx context.Context, projectKey, groupName string) error {
+	strUrl := fmt.Sprintf("%s/projects/%s/permissions/groups?name=%s",
+		d.baseEndpoint,
+		projectKey,
+		groupName,
+	)
+	uri, err := url.Parse(strUrl)
+	if err != nil {
+		return err
+	}
+
+	req, err := d.httpClient.NewRequest(ctx,
+		http.MethodDelete,
+		uri,
+		uhttp.WithAcceptJSONHeader(),
+		WithSetBasicAuthHeader(d.getUser(), d.getPWD()),
+	)
+	if err != nil {
+		return err
+	}
+
+	resp, err := d.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		return errors.New("user not added")
+	}
+
+	return nil
+}
+
+// UpdateUserProjectPermission
+// Update user project permission. Available project permissions are: PROJECT_READ, PROJECT_WRITE, PROJECT_ADMIN
+// https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-project/#api-api-latest-projects-projectkey-permissions-users-put
+func (d *DataCenterClient) UpdateUserProjectPermission(ctx context.Context, projectKey, userName, permission string) error {
+	strUrl := fmt.Sprintf("%s/projects/%s/permissions/users?name=%s&permission=%s",
+		d.baseEndpoint,
+		projectKey,
+		userName,
+		permission,
+	)
+	uri, err := url.Parse(strUrl)
+	if err != nil {
+		return err
+	}
+
+	req, err := d.httpClient.NewRequest(ctx,
+		http.MethodPut,
+		uri,
+		uhttp.WithAcceptJSONHeader(),
+		WithSetBasicAuthHeader(d.getUser(), d.getPWD()),
+	)
+	if err != nil {
+		return err
+	}
+
+	resp, err := d.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		return errors.New("project not updated")
+	}
+
+	return nil
+}
+
+// UpdateGroupProjectPermission
+// Update group project permission. Available project permissions are: PROJECT_READ, PROJECT_WRITE, PROJECT_ADMIN
+// https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-project/#api-api-latest-projects-projectkey-permissions-groups-put
+func (d *DataCenterClient) UpdateGroupProjectPermission(ctx context.Context, projectKey, groupName, permission string) error {
+	strUrl := fmt.Sprintf("%s/projects/%s/permissions/groups?name=%s&permission=%s",
+		d.baseEndpoint,
+		projectKey,
+		groupName,
+		permission,
+	)
+	uri, err := url.Parse(strUrl)
+	if err != nil {
+		return err
+	}
+
+	req, err := d.httpClient.NewRequest(ctx,
+		http.MethodPut,
+		uri,
+		uhttp.WithAcceptJSONHeader(),
+		WithSetBasicAuthHeader(d.getUser(), d.getPWD()),
+	)
+	if err != nil {
+		return err
+	}
+
+	resp, err := d.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		return errors.New("project not updated")
 	}
 
 	return nil
