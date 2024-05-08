@@ -72,7 +72,7 @@ func (d *DataCenterClient) GetUsers(ctx context.Context, startPage, limit string
 		page         Page
 		sPage, nPage = "0", "0"
 	)
-	strUrl, err := url.JoinPath(d.baseEndpoint, "/users")
+	strUrl, err := url.JoinPath(d.baseEndpoint, "users")
 	if err != nil {
 		return nil, Page{}, err
 	}
@@ -136,7 +136,7 @@ func (d *DataCenterClient) GetProjects(ctx context.Context, startPage, limit str
 		page         Page
 		sPage, nPage = "0", "0"
 	)
-	strUrl, err := url.JoinPath(d.baseEndpoint, "/projects")
+	strUrl, err := url.JoinPath(d.baseEndpoint, "projects")
 	if err != nil {
 		return nil, Page{}, err
 	}
@@ -200,7 +200,7 @@ func (d *DataCenterClient) GetRepos(ctx context.Context, startPage, limit string
 		page         Page
 		sPage, nPage = "0", "0"
 	)
-	strUrl, err := url.JoinPath(d.baseEndpoint, "/repos")
+	strUrl, err := url.JoinPath(d.baseEndpoint, "repos")
 	if err != nil {
 		return nil, Page{}, err
 	}
@@ -264,7 +264,7 @@ func (d *DataCenterClient) GetGroups(ctx context.Context, startPage, limit strin
 		page         Page
 		sPage, nPage = "0", "0"
 	)
-	strUrl, err := url.JoinPath(d.baseEndpoint, "/groups")
+	strUrl, err := url.JoinPath(d.baseEndpoint, "groups")
 	if err != nil {
 		return nil, Page{}, err
 	}
@@ -403,7 +403,7 @@ func (d *DataCenterClient) GetGlobalUserPermissions(ctx context.Context, startPa
 		page            Page
 		sPage, nPage    = "0", "0"
 	)
-	strUrl, err := url.JoinPath(d.baseEndpoint, "/admin/permissions/users")
+	strUrl, err := url.JoinPath(d.baseEndpoint, "admin/permissions/users")
 	if err != nil {
 		return nil, Page{}, err
 	}
@@ -453,7 +453,7 @@ func (d *DataCenterClient) GetGlobalGroupPermissions(ctx context.Context, startP
 		page            Page
 		sPage, nPage    = "0", "0"
 	)
-	strUrl, err := url.JoinPath(d.baseEndpoint, "/admin/permissions/groups")
+	strUrl, err := url.JoinPath(d.baseEndpoint, "admin/permissions/groups")
 	if err != nil {
 		return nil, Page{}, err
 	}
@@ -596,7 +596,7 @@ func (d *DataCenterClient) ListUserRepositoryPermissions(ctx context.Context, op
 	return permissions, nextPageToken, err
 }
 
-func (d *DataCenterClient) GetProjectsPermissions(ctx context.Context, startPage, limit, projectKey string) ([]UsersPermissions, Page, error) {
+func (d *DataCenterClient) GetUserProjectsPermissions(ctx context.Context, startPage, limit, projectKey string) ([]UsersPermissions, Page, error) {
 	var (
 		permissionData GlobalPermissionsAPIData
 		page           Page
@@ -642,9 +642,55 @@ func (d *DataCenterClient) GetProjectsPermissions(ctx context.Context, startPage
 	return permissionData.UsersPermissions, page, nil
 }
 
-func (d *DataCenterClient) ListProjectsPermissions(ctx context.Context, opts PageOptions, projectKey string) ([]UsersPermissions, string, error) {
+func (d *DataCenterClient) GetGroupProjectsPermissions(ctx context.Context, startPage, limit, projectKey string) ([]GroupsPermissions, Page, error) {
+	var (
+		permissionData GlobalGroupPermissionsAPIData
+		page           Page
+		sPage, nPage   = "0", "0"
+	)
+	strUrl := fmt.Sprintf("%s/projects/%s/permissions/groups", d.baseEndpoint, projectKey)
+	uri, err := url.Parse(strUrl)
+	if err != nil {
+		return nil, Page{}, err
+	}
+
+	if startPage != "" {
+		sPage = startPage
+	}
+
+	setRawQuery(uri, sPage, limit)
+	req, err := d.httpClient.NewRequest(ctx,
+		http.MethodGet,
+		uri,
+		uhttp.WithAcceptJSONHeader(),
+		WithSetBasicAuthHeader(d.getUser(), d.getPWD()),
+	)
+	if err != nil {
+		return nil, Page{}, err
+	}
+
+	resp, err := d.httpClient.Do(req, uhttp.WithJSONResponse(&permissionData))
+	if err != nil {
+		return nil, Page{}, err
+	}
+
+	defer resp.Body.Close()
+	sPage = strconv.Itoa(permissionData.Start)
+	nPage = strconv.Itoa(permissionData.NextPageStart)
+	if !permissionData.IsLastPage {
+		page = Page{
+			PreviousPage: &sPage,
+			NextPage:     &nPage,
+			Count:        int64(permissionData.Size),
+		}
+	}
+
+	return permissionData.GroupsPermissions, page, nil
+}
+
+func (d *DataCenterClient) ListUserProjectsPermissions(ctx context.Context, opts PageOptions, projectKey string) ([]UsersPermissions, string, error) {
 	var nextPageToken string = ""
-	permissions, page, err := d.GetProjectsPermissions(ctx,
+	permissions, page, err := d.GetUserProjectsPermissions(ctx,
 		strconv.Itoa(opts.Page),
 		strconv.Itoa(opts.PerPage),
 		projectKey,
@@ -706,6 +752,24 @@ func (d *DataCenterClient) GetGroupRepositoryPermissions(ctx context.Context, st
 	return permissionData.GroupsPermissions, page, nil
 }
 
+func (d *DataCenterClient) ListGroupProjectsPermissions(ctx context.Context, opts PageOptions, projectKey string) ([]GroupsPermissions, string, error) {
+	var nextPageToken string = ""
+	permissions, page, err := d.GetGroupProjectsPermissions(ctx,
+		strconv.Itoa(opts.Page),
+		strconv.Itoa(opts.PerPage),
+		projectKey,
+	)
+	if err != nil {
+		return permissions, "", err
+	}
+
+	if page.HasNext() {
+		nextPageToken = *page.NextPage
+	}
+
+	return permissions, nextPageToken, err
+}
+
 func (d *DataCenterClient) ListGroupRepositoryPermissions(ctx context.Context, opts PageOptions, projectKey, repositorySlug string) ([]GroupsPermissions, string, error) {
 	var nextPageToken string = ""
 	permissions, page, err := d.GetGroupRepositoryPermissions(ctx,
@@ -734,7 +798,7 @@ func (d *DataCenterClient) AddUserToGroups(ctx context.Context, groupName, userN
 		payload = []byte(fmt.Sprintf(`{"groups": ["%s"], "user": "%s"}`, groupName, userName))
 	)
 
-	strUrl, err := url.JoinPath(d.baseEndpoint, "/admin/users/add-groups")
+	strUrl, err := url.JoinPath(d.baseEndpoint, "admin/users/add-groups")
 	if err != nil {
 		return err
 	}
@@ -784,7 +848,7 @@ func (d *DataCenterClient) RemoveUserFromGroup(ctx context.Context, userName, gr
 		payload = []byte(fmt.Sprintf(`{"context": "%s", "itemName": "%s"}`, userName, groupName))
 	)
 
-	strUrl, err := url.JoinPath(d.baseEndpoint, "/admin/users/remove-group")
+	strUrl, err := url.JoinPath(d.baseEndpoint, "admin/users/remove-group")
 	if err != nil {
 		return err
 	}
@@ -944,6 +1008,39 @@ func (d *DataCenterClient) RevokeUserRepositoryPermission(ctx context.Context, p
 		projectKey,
 		repositorySlug,
 		userName,
+	)
+	uri, err := url.Parse(strUrl)
+	if err != nil {
+		return err
+	}
+
+	req, err := d.httpClient.NewRequest(ctx,
+		http.MethodDelete,
+		uri,
+		uhttp.WithAcceptJSONHeader(),
+		WithSetBasicAuthHeader(d.getUser(), d.getPWD()),
+	)
+	if err != nil {
+		return err
+	}
+
+	resp, err := d.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		return errors.New("user not added")
+	}
+
+	return nil
+}
+
+func (d *DataCenterClient) RevokeUserProjectPermission(ctx context.Context, projectKey string) error {
+	strUrl := fmt.Sprintf("%s/projects/%s/permissions/users",
+		d.baseEndpoint,
+		projectKey,
 	)
 	uri, err := url.Parse(strUrl)
 	if err != nil {

@@ -251,7 +251,7 @@ func (g *groupBuilder) Grant(ctx context.Context, principal *v2.Resource, entitl
 	index := slices.IndexFunc(members, func(c client.Members) bool {
 		return c.ID == userId
 	})
-	if index != -1 {
+	if index != NF {
 		l.Warn(
 			"bitbucket(dc)-connector: user is already a member of the group",
 			zap.String("principal_id", principal.Id.String()),
@@ -308,7 +308,7 @@ func (g *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations
 	index := slices.IndexFunc(groupMembers, func(c client.Members) bool {
 		return c.ID == userId
 	})
-	if index == -1 {
+	if index == NF {
 		l.Warn(
 			"bitbucket(dc)-connector: user is not a member of the group",
 			zap.String("principal_id", principal.Id.String()),

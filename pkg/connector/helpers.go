@@ -217,16 +217,16 @@ func unmarshalSkipToken(token *pagination.Token) (int32, *pagination.Bag, error)
 
 func ParseEntitlementID(id string) (*v2.ResourceId, []string, error) {
 	parts := strings.Split(id, ":")
-
 	// Need to be at least 3 parts type:entitlement_id:slug
-	if len(parts) < 3 {
-		return nil, nil, fmt.Errorf("bitbucket-connector: invalid resource id")
+	if len(parts) < 3 || len(parts) > 3 {
+		return nil, nil, fmt.Errorf("bitbucket(dc)-connector: invalid resource id")
 	}
 
 	resourceId := &v2.ResourceId{
 		ResourceType: parts[0],
 		Resource:     strings.Join(parts[1:len(parts)-1], ":"),
 	}
+
 	return resourceId, parts, nil
 }
 
@@ -352,6 +352,34 @@ func listGroupRepositoryPermissions(ctx context.Context, cli *client.DataCenterC
 			PerPage: ITEMSPERPAGE,
 			Page:    page,
 		}, projectKey, repositorySlug)
+		if err != nil {
+			return nil, err
+		}
+
+		lstPermissions = append(lstPermissions, permissions...)
+		if nextPageToken == "" {
+			break
+		}
+
+		page, err = strconv.Atoi(nextPageToken)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return lstPermissions, nil
+}
+
+func listUserProjectsPermissions(ctx context.Context, cli *client.DataCenterClient, projectKey string) ([]client.UsersPermissions, error) {
+	var (
+		page           int
+		lstPermissions []client.UsersPermissions
+	)
+	for {
+		permissions, nextPageToken, err := cli.ListUserProjectsPermissions(ctx, client.PageOptions{
+			PerPage: ITEMSPERPAGE,
+			Page:    page,
+		}, projectKey)
 		if err != nil {
 			return nil, err
 		}

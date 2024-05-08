@@ -12,6 +12,8 @@ import (
 	ent "github.com/conductorone/baton-sdk/pkg/types/entitlement"
 	"github.com/conductorone/baton-sdk/pkg/types/grant"
 	rs "github.com/conductorone/baton-sdk/pkg/types/resource"
+	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
+	"go.uber.org/zap"
 )
 
 type projectBuilder struct {
@@ -26,7 +28,7 @@ const (
 	roleProjectAdmin  = "PROJECT_ADMIN"
 )
 
-var projectPermissions = []string{roleProjectRead, roleProjectWrite, roleProjectCreate, roleProjectAdmin}
+var projectPermissions = []string{roleProjectRead, roleProjectWrite, roleProjectCreate, roleProjectAdmin, roleRepoCreate}
 
 func (p *projectBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
 	return p.resourceType
@@ -111,11 +113,14 @@ func (p *projectBuilder) Entitlements(_ context.Context, resource *v2.Resource, 
 
 func (p *projectBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
 	var (
-		pageToken  int
-		err        error
-		rv         []*v2.Grant
-		projectKey string
-		ok         bool
+		pageToken         int
+		err               error
+		rv                []*v2.Grant
+		projectKey        string
+		ok                bool
+		nextPageToken     string
+		usersPermissions  []client.UsersPermissions
+		groupsPermissions []client.GroupsPermissions
 	)
 	_, bag, err := unmarshalSkipToken(pToken)
 	if err != nil {
@@ -123,8 +128,12 @@ func (p *projectBuilder) Grants(ctx context.Context, resource *v2.Resource, pTok
 	}
 
 	if bag.Current() == nil {
+		// Push onto stack in reverse
 		bag.Push(pagination.PageState{
-			ResourceTypeID: resourceTypeProject.Id,
+			ResourceTypeID: resourceTypeGroup.Id,
+		})
+		bag.Push(pagination.PageState{
+			ResourceTypeID: resourceTypeUser.Id,
 		})
 	}
 
@@ -144,36 +153,65 @@ func (p *projectBuilder) Grants(ctx context.Context, resource *v2.Resource, pTok
 		return nil, "", nil, fmt.Errorf("project_key not found")
 	}
 
-	members, nextPageToken, err := p.client.ListProjectsPermissions(ctx, client.PageOptions{
-		PerPage: ITEMSPERPAGE,
-		Page:    pageToken,
-	}, projectKey)
-	if err != nil {
-		return nil, "", nil, err
-	}
-
-	err = bag.Next(nextPageToken)
-	if err != nil {
-		return nil, "", nil, err
-	}
-
-	for _, member := range members {
-		usrCppy := member.User
-		ur, err := userResource(ctx, &client.Users{
-			Name:         usrCppy.Name,
-			EmailAddress: usrCppy.EmailAddress,
-			Active:       usrCppy.Active,
-			DisplayName:  usrCppy.DisplayName,
-			ID:           usrCppy.ID,
-			Slug:         usrCppy.Slug,
-			Type:         usrCppy.Type,
-		}, resource.Id)
+	switch bag.ResourceTypeID() {
+	case resourceTypeGroup.Id:
+		groupsPermissions, nextPageToken, err = p.client.ListGroupProjectsPermissions(ctx, client.PageOptions{
+			PerPage: ITEMSPERPAGE,
+			Page:    pageToken,
+		}, projectKey)
 		if err != nil {
-			return nil, "", nil, fmt.Errorf("error creating user resource for project %s: %w", resource.Id.Resource, err)
+			return nil, "", nil, err
 		}
 
-		membershipGrant := grant.NewGrant(resource, member.Permission, ur.Id)
-		rv = append(rv, membershipGrant)
+		err = bag.Next(nextPageToken)
+		if err != nil {
+			return nil, "", nil, err
+		}
+
+		for _, member := range groupsPermissions {
+			grpCppy := member.Group
+			ur, err := groupResource(ctx, grpCppy.Name, resource.Id)
+			if err != nil {
+				return nil, "", nil, fmt.Errorf("error creating group resource for repository %s: %w", resource.Id.Resource, err)
+			}
+
+			membershipGrant := grant.NewGrant(resource, member.Permission, ur.Id)
+			rv = append(rv, membershipGrant)
+		}
+	case resourceTypeUser.Id:
+		usersPermissions, nextPageToken, err = p.client.ListUserProjectsPermissions(ctx, client.PageOptions{
+			PerPage: ITEMSPERPAGE,
+			Page:    pageToken,
+		}, projectKey)
+		if err != nil {
+			return nil, "", nil, err
+		}
+
+		err = bag.Next(nextPageToken)
+		if err != nil {
+			return nil, "", nil, err
+		}
+
+		for _, member := range usersPermissions {
+			usrCppy := member.User
+			ur, err := userResource(ctx, &client.Users{
+				Name:         usrCppy.Name,
+				EmailAddress: usrCppy.EmailAddress,
+				Active:       usrCppy.Active,
+				DisplayName:  usrCppy.DisplayName,
+				ID:           usrCppy.ID,
+				Slug:         usrCppy.Slug,
+				Type:         usrCppy.Type,
+			}, resource.Id)
+			if err != nil {
+				return nil, "", nil, fmt.Errorf("error creating user resource for project %s: %w", resource.Id.Resource, err)
+			}
+
+			membershipGrant := grant.NewGrant(resource, member.Permission, ur.Id)
+			rv = append(rv, membershipGrant)
+		}
+	default:
+		return nil, "", nil, fmt.Errorf("bitbucket(dc) connector: invalid grant resource type: %s", bag.ResourceTypeID())
 	}
 
 	nextPageToken, err = bag.Marshal()
@@ -184,7 +222,60 @@ func (p *projectBuilder) Grants(ctx context.Context, resource *v2.Resource, pTok
 	return rv, nextPageToken, nil, nil
 }
 
-func (g *projectBuilder) Grant(ctx context.Context, principal *v2.Resource, entitlement *v2.Entitlement) (annotations.Annotations, error) {
+func (p *projectBuilder) Grant(ctx context.Context, principal *v2.Resource, entitlement *v2.Entitlement) (annotations.Annotations, error) {
+	var (
+		projectKey, permission string
+		ok                     bool
+	)
+	l := ctxzap.Extract(ctx)
+	if principal.Id.ResourceType != resourceTypeUser.Id {
+		l.Warn(
+			"bitbucket(dc)-connector: only users can be granted project membership",
+			zap.String("principal_type", principal.Id.ResourceType),
+			zap.String("principal_id", principal.Id.Resource),
+		)
+		return nil, fmt.Errorf("bitbucket(dc)-connector: only users can be granted project membership")
+	}
+
+	_, permissions, err := ParseEntitlementID(entitlement.Id)
+	if err != nil {
+		return nil, err
+	}
+
+	userId, err := strconv.Atoi(principal.Id.Resource)
+	if err != nil {
+		return nil, err
+	}
+
+	switch permissions[len(permissions)-1] {
+	case roleProjectCreate, roleProjectWrite, roleProjectAdmin, roleProjectRead:
+		permission = permissions[len(permissions)-1]
+	default:
+		return nil, fmt.Errorf("bitbucket(dc) connector: invalid permission type: %s", permissions[len(permissions)-1])
+	}
+
+	groupTrait, err := rs.GetGroupTrait(entitlement.Resource)
+	if err != nil {
+		return nil, err
+	}
+
+	if projectKey, ok = rs.GetProfileStringValue(groupTrait.Profile, "project_key"); !ok {
+		return nil, fmt.Errorf("project_key not found")
+	}
+
+	lstUserPermissions, err := listUserProjectsPermissions(ctx, p.client, projectKey)
+	if err != nil {
+		return nil, err
+	}
+
+	l.Warn("Project Membership has been created.",
+		zap.String("principal", principal.DisplayName),
+		zap.String("ProjectKey", projectKey),
+		zap.Int("userId", userId),
+		zap.String("permission", permission),
+		zap.Any("lstUserPermissions", lstUserPermissions),
+	)
+
 	return nil, nil
 }
 

@@ -25,7 +25,7 @@ type repoBuilder struct {
 const (
 	roleRepoRead   = "REPO_READ"
 	roleRepoWrite  = "REPO_WRITE"
-	roleRepoCreate = "CREATE-REPO"
+	roleRepoCreate = "REPO_CREATE"
 	roleRepoAdmin  = "REPO_ADMIN"
 )
 
@@ -216,7 +216,7 @@ func (r *repoBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken 
 			rv = append(rv, membershipGrant)
 		}
 	default:
-		return nil, "", nil, fmt.Errorf("bitbucket-dc connector: invalid grant resource type: %s", bag.ResourceTypeID())
+		return nil, "", nil, fmt.Errorf("bitbucket(dc) connector: invalid grant resource type: %s", bag.ResourceTypeID())
 	}
 
 	nextPageToken, err = bag.Marshal()
