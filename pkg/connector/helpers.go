@@ -397,3 +397,31 @@ func listUserProjectsPermissions(ctx context.Context, cli *client.DataCenterClie
 
 	return lstPermissions, nil
 }
+
+func listGroupProjectsPermissions(ctx context.Context, cli *client.DataCenterClient, projectKey string) ([]client.GroupsPermissions, error) {
+	var (
+		page           int
+		lstPermissions []client.GroupsPermissions
+	)
+	for {
+		permissions, nextPageToken, err := cli.ListGroupProjectsPermissions(ctx, client.PageOptions{
+			PerPage: ITEMSPERPAGE,
+			Page:    page,
+		}, projectKey)
+		if err != nil {
+			return nil, err
+		}
+
+		lstPermissions = append(lstPermissions, permissions...)
+		if nextPageToken == "" {
+			break
+		}
+
+		page, err = strconv.Atoi(nextPageToken)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return lstPermissions, nil
+}

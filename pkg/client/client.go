@@ -706,6 +706,24 @@ func (d *DataCenterClient) ListUserProjectsPermissions(ctx context.Context, opts
 	return permissions, nextPageToken, err
 }
 
+func (d *DataCenterClient) ListGroupProjectsPermissions(ctx context.Context, opts PageOptions, projectKey string) ([]GroupsPermissions, string, error) {
+	var nextPageToken string = ""
+	permissions, page, err := d.GetGroupProjectsPermissions(ctx,
+		strconv.Itoa(opts.Page),
+		strconv.Itoa(opts.PerPage),
+		projectKey,
+	)
+	if err != nil {
+		return permissions, "", err
+	}
+
+	if page.HasNext() {
+		nextPageToken = *page.NextPage
+	}
+
+	return permissions, nextPageToken, err
+}
+
 func (d *DataCenterClient) GetGroupRepositoryPermissions(ctx context.Context, startPage, limit, projectKey, repositorySlug string) ([]GroupsPermissions, Page, error) {
 	var (
 		permissionData GroupPermissionsAPIData
@@ -750,24 +768,6 @@ func (d *DataCenterClient) GetGroupRepositoryPermissions(ctx context.Context, st
 	}
 
 	return permissionData.GroupsPermissions, page, nil
-}
-
-func (d *DataCenterClient) ListGroupProjectsPermissions(ctx context.Context, opts PageOptions, projectKey string) ([]GroupsPermissions, string, error) {
-	var nextPageToken string = ""
-	permissions, page, err := d.GetGroupProjectsPermissions(ctx,
-		strconv.Itoa(opts.Page),
-		strconv.Itoa(opts.PerPage),
-		projectKey,
-	)
-	if err != nil {
-		return permissions, "", err
-	}
-
-	if page.HasNext() {
-		nextPageToken = *page.NextPage
-	}
-
-	return permissions, nextPageToken, err
 }
 
 func (d *DataCenterClient) ListGroupRepositoryPermissions(ctx context.Context, opts PageOptions, projectKey, repositorySlug string) ([]GroupsPermissions, string, error) {

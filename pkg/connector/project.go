@@ -3,6 +3,7 @@ package connector
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 
 	"github.com/conductorone/baton-bitbucket-datacenter/pkg/client"
@@ -228,21 +229,16 @@ func (p *projectBuilder) Grant(ctx context.Context, principal *v2.Resource, enti
 		ok                     bool
 	)
 	l := ctxzap.Extract(ctx)
-	if principal.Id.ResourceType != resourceTypeUser.Id {
+	if principal.Id.ResourceType != resourceTypeUser.Id && principal.Id.ResourceType != resourceTypeGroup.Id {
 		l.Warn(
-			"bitbucket(dc)-connector: only users can be granted project membership",
+			"bitbucket(dc)-connector: only users or groups can be granted project membership",
 			zap.String("principal_type", principal.Id.ResourceType),
 			zap.String("principal_id", principal.Id.Resource),
 		)
-		return nil, fmt.Errorf("bitbucket(dc)-connector: only users can be granted project membership")
+		return nil, fmt.Errorf("bitbucket(dc)-connector: only users or groups can be granted project membership")
 	}
 
 	_, permissions, err := ParseEntitlementID(entitlement.Id)
-	if err != nil {
-		return nil, err
-	}
-
-	userId, err := strconv.Atoi(principal.Id.Resource)
 	if err != nil {
 		return nil, err
 	}
@@ -263,18 +259,72 @@ func (p *projectBuilder) Grant(ctx context.Context, principal *v2.Resource, enti
 		return nil, fmt.Errorf("project_key not found")
 	}
 
-	lstUserPermissions, err := listUserProjectsPermissions(ctx, p.client, projectKey)
-	if err != nil {
-		return nil, err
-	}
+	switch principal.Id.ResourceType {
+	case resourceTypeUser.Id:
+		userId, err := strconv.Atoi(principal.Id.Resource)
+		if err != nil {
+			return nil, err
+		}
 
-	l.Warn("Project Membership has been created.",
-		zap.String("principal", principal.DisplayName),
-		zap.String("ProjectKey", projectKey),
-		zap.Int("userId", userId),
-		zap.String("permission", permission),
-		zap.Any("lstUserPermissions", lstUserPermissions),
-	)
+		listUser, err := listUserProjectsPermissions(ctx, p.client, projectKey)
+		if err != nil {
+			return nil, err
+		}
+
+		index := slices.IndexFunc(listUser, func(c client.UsersPermissions) bool {
+			return c.User.Name == principal.DisplayName && c.Permission == permission
+		})
+		if index != NF {
+			l.Warn(
+				"bitbucket(dc)-connector: user already has this project permission",
+				zap.String("principal_id", principal.Id.String()),
+				zap.String("principal_type", principal.Id.ResourceType),
+			)
+			return nil, fmt.Errorf("bitbucket(dc)-connector: user already has this project permission")
+		}
+
+		err = p.client.UpdateUserProjectPermission(ctx, projectKey, principal.DisplayName, permission)
+		if err != nil {
+			return nil, err
+		}
+
+		l.Warn("Project Membership has been created.",
+			zap.Int64("UserID", int64(userId)),
+			zap.String("UserName", principal.DisplayName),
+			zap.String("ProjectKey", projectKey),
+			zap.String("Permission", permission),
+		)
+	case resourceTypeGroup.Id:
+		listGroup, err := listGroupProjectsPermissions(ctx, p.client, projectKey)
+		if err != nil {
+			return nil, err
+		}
+
+		index := slices.IndexFunc(listGroup, func(c client.GroupsPermissions) bool {
+			return c.Group.Name == principal.DisplayName && c.Permission == permission
+		})
+		if index != NF {
+			l.Warn(
+				"bitbucket(dc)-connector: group already has this project permission",
+				zap.String("principal_id", principal.Id.String()),
+				zap.String("principal_type", principal.Id.ResourceType),
+			)
+			return nil, fmt.Errorf("bitbucket(dc)-connector: group already has this project permission")
+		}
+
+		err = p.client.UpdateGroupProjectPermission(ctx, projectKey, principal.DisplayName, permission)
+		if err != nil {
+			return nil, err
+		}
+
+		l.Warn("Project Membership has been created.",
+			zap.String("GroupName", principal.DisplayName),
+			zap.String("ProjectKey", projectKey),
+			zap.String("Permission", permission),
+		)
+	default:
+		return nil, fmt.Errorf("bitbucket(dc) connector: invalid grant resource type: %s", principal.Id.ResourceType)
+	}
 
 	return nil, nil
 }

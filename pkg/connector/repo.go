@@ -285,11 +285,11 @@ func (r *repoBuilder) Grant(ctx context.Context, principal *v2.Resource, entitle
 		})
 		if index != NF {
 			l.Warn(
-				"bitbucket(dc)-connector: user already have this repository permission",
+				"bitbucket(dc)-connector: user already has this repository permission",
 				zap.String("principal_id", principal.Id.String()),
 				zap.String("principal_type", principal.Id.ResourceType),
 			)
-			return nil, fmt.Errorf("bitbucket(dc)-connector: user already have this repository permission")
+			return nil, fmt.Errorf("bitbucket(dc)-connector: user already has this repository permission")
 		}
 
 		err = r.client.UpdateUserRepositoryPermission(ctx,
@@ -319,11 +319,11 @@ func (r *repoBuilder) Grant(ctx context.Context, principal *v2.Resource, entitle
 		})
 		if index != NF {
 			l.Warn(
-				"bitbucket(dc)-connector: group already have this repository permission",
+				"bitbucket(dc)-connector: group already has this repository permission",
 				zap.String("principal_id", principal.Id.String()),
 				zap.String("principal_type", principal.Id.ResourceType),
 			)
-			return nil, fmt.Errorf("bitbucket(dc)-connector: group already have this repository permission")
+			return nil, fmt.Errorf("bitbucket(dc)-connector: group already has this repository permission")
 		}
 
 		err = r.client.UpdateGroupRepositoryPermission(ctx,
