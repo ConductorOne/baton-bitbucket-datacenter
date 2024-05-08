@@ -129,7 +129,6 @@ func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 		rv                              []*v2.Grant
 		userPermission, groupPermission string
 	)
-	const NF = -1
 	_, bag, err := unmarshalSkipToken(pToken)
 	if err != nil {
 		return nil, "", nil, err
@@ -160,19 +159,19 @@ func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 		return nil, "", nil, err
 	}
 
+	groupPos := slices.IndexFunc(groupPermissions, func(c client.GroupsPermissions) bool {
+		return c.Group.Name == resource.Id.Resource
+	})
+	if groupPos != NF {
+		groupPermission = groupPermissions[groupPos].Permission
+	}
+
 	groupMembers, nextPageToken, err := g.client.ListGroupMembers(ctx, client.PageOptions{
 		PerPage: ITEMSPERPAGE,
 		Page:    pageToken,
 	}, resource.Id.Resource)
 	if err != nil {
 		return nil, "", nil, err
-	}
-
-	groupPos := slices.IndexFunc(groupPermissions, func(c client.GroupsPermissions) bool {
-		return c.Group.Name == resource.Id.Resource
-	})
-	if groupPos != NF {
-		groupPermission = groupPermissions[groupPos].Permission
 	}
 
 	err = bag.Next(nextPageToken)
@@ -243,15 +242,15 @@ func (g *groupBuilder) Grant(ctx context.Context, principal *v2.Resource, entitl
 	}
 
 	// Check if user is already a member of the group
-	members, err := listGroupMembers(ctx, g.client, groupResourceId.Resource)
+	listGroup, err := listGroupMembers(ctx, g.client, groupResourceId.Resource)
 	if err != nil {
 		return nil, fmt.Errorf("bitbucket(dc)-connector: failed to get group members: %w", err)
 	}
 
-	index := slices.IndexFunc(members, func(c client.Members) bool {
+	groupPos := slices.IndexFunc(listGroup, func(c client.Members) bool {
 		return c.ID == userId
 	})
-	if index != NF {
+	if groupPos != NF {
 		l.Warn(
 			"bitbucket(dc)-connector: user is already a member of the group",
 			zap.String("principal_id", principal.Id.String()),
@@ -305,10 +304,10 @@ func (g *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations
 		return nil, fmt.Errorf("bitbucket(dc)-connector: failed to get group members: %w", err)
 	}
 
-	index := slices.IndexFunc(groupMembers, func(c client.Members) bool {
+	groupPos := slices.IndexFunc(groupMembers, func(c client.Members) bool {
 		return c.ID == userId
 	})
-	if index == NF {
+	if groupPos == NF {
 		l.Warn(
 			"bitbucket(dc)-connector: user is not a member of the group",
 			zap.String("principal_id", principal.Id.String()),
