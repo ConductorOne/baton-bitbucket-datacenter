@@ -66,6 +66,9 @@ func New(ctx context.Context, clientId, clientSecret string) (*DataCenterClient,
 	return &dc, nil
 }
 
+// GetUsers
+// Get all users. Only authenticated users may call this resource.
+// https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-system-maintenance/#api-api-latest-users-get
 func (d *DataCenterClient) GetUsers(ctx context.Context, startPage, limit string) ([]Users, Page, error) {
 	var (
 		userData     UsersAPIData
@@ -130,6 +133,9 @@ func (d *DataCenterClient) ListUsers(ctx context.Context, opts PageOptions) ([]U
 	return users, nextPageToken, err
 }
 
+// GetProjects
+// Get projects. Only projects for which the authenticated user has the PROJECT_VIEW permission will be returned.
+// https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-project/#api-api-latest-projects-get
 func (d *DataCenterClient) GetProjects(ctx context.Context, startPage, limit string) ([]Projects, Page, error) {
 	var (
 		projectData  ProjectsAPIData
@@ -258,6 +264,9 @@ func (d *DataCenterClient) ListRepos(ctx context.Context, opts PageOptions) ([]R
 	return repos, nextPageToken, err
 }
 
+// GetGroups
+// Get groups. The authenticated user must have LICENSED_USER permission or higher to call this resource.
+// https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-permission-management/#api-api-latest-admin-groups-get
 func (d *DataCenterClient) GetGroups(ctx context.Context, startPage, limit string) ([]string, Page, error) {
 	var (
 		groupData    GroupsAPIData
@@ -322,7 +331,8 @@ func (d *DataCenterClient) ListGroups(ctx context.Context, opts PageOptions) ([]
 	return groups, nextPageToken, err
 }
 
-// GetGroupMembers get group members
+// GetGroupMembers
+// Get group members. The authenticated user must have the LICENSED_USER permission to call this resource.
 // https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-permission-management/#api-api-latest-admin-groups-more-members-get
 func (d *DataCenterClient) GetGroupMembers(ctx context.Context, startPage, limit, groupName string) ([]Members, Page, error) {
 	var (
@@ -370,6 +380,10 @@ func (d *DataCenterClient) GetGroupMembers(ctx context.Context, startPage, limit
 	return memberData.Members, page, nil
 }
 
+// setRawQuery
+// Query parameters.
+// Start : number for the page (inclusive). If not passed, first page is assumed.
+// limit : Number of items to return. If not passed, a page size of 25 is used.
 func setRawQuery(uri *url.URL, sPage string, limit string) {
 	q := uri.Query()
 	q.Set("start", sPage)
@@ -395,7 +409,8 @@ func (d *DataCenterClient) ListGroupMembers(ctx context.Context, opts PageOption
 	return members, nextPageToken, err
 }
 
-// GetGlobalPermissions get users with a global permission
+// GetGlobalUserPermissions
+// Get users with a global permission
 // https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-permission-management/#api-api-latest-admin-permissions-users-get
 func (d *DataCenterClient) GetGlobalUserPermissions(ctx context.Context, startPage, limit string) ([]UsersPermissions, Page, error) {
 	var (
@@ -837,7 +852,8 @@ func (d *DataCenterClient) AddUserToGroups(ctx context.Context, groupName, userN
 	return nil
 }
 
-// RemoveUserFromGroup removes user from group
+// RemoveUserFromGroup
+// Remove user from group
 // https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-permission-management/#api-api-latest-admin-users-remove-group-post
 func (d *DataCenterClient) RemoveUserFromGroup(ctx context.Context, userName, groupName string) error {
 	var (
@@ -887,7 +903,8 @@ func (d *DataCenterClient) RemoveUserFromGroup(ctx context.Context, userName, gr
 	return nil
 }
 
-// UpdateUserRepositoryPermission updates user repository permission
+// UpdateUserRepositoryPermission
+// Update user repository permission
 // https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-permission-management/#api-api-latest-projects-projectkey-repos-repositoryslug-permissions-users-put
 func (d *DataCenterClient) UpdateUserRepositoryPermission(ctx context.Context, projectKey, repositorySlug, userName, permission string) error {
 	strUrl := fmt.Sprintf("%s/projects/%s/repos/%s/permissions/users?name=%s&permission=%s",
@@ -925,7 +942,8 @@ func (d *DataCenterClient) UpdateUserRepositoryPermission(ctx context.Context, p
 	return nil
 }
 
-// UpdateGroupRepositoryPermission updates group repository permission
+// UpdateGroupRepositoryPermission
+// Update group repository permission
 // https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-permission-management/#api-api-latest-projects-projectkey-repos-repositoryslug-permissions-groups-put
 func (d *DataCenterClient) UpdateGroupRepositoryPermission(ctx context.Context, projectKey, repositorySlug, groupName, permission string) error {
 	strUrl := fmt.Sprintf("%s/projects/%s/repos/%s/permissions/groups?name=%s&permission=%s",
@@ -963,7 +981,8 @@ func (d *DataCenterClient) UpdateGroupRepositoryPermission(ctx context.Context, 
 	return nil
 }
 
-// RevokeGroupRepositoryPermission revokes group repository permission
+// RevokeGroupRepositoryPermission
+// Revoke group repository permission
 // https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-permission-management/#api-api-latest-projects-projectkey-repos-repositoryslug-permissions-groups-delete
 func (d *DataCenterClient) RevokeGroupRepositoryPermission(ctx context.Context, projectKey, repositorySlug, groupName string) error {
 	strUrl := fmt.Sprintf("%s/projects/%s/repos/%s/permissions/groups?name=%s",
@@ -1000,7 +1019,8 @@ func (d *DataCenterClient) RevokeGroupRepositoryPermission(ctx context.Context, 
 	return nil
 }
 
-// UpdateUserRepositoryPermission revokes user repository permission
+// RevokeUserRepositoryPermission
+// Revoke user repository permission
 // https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-permission-management/#api-api-latest-projects-projectkey-repos-repositoryslug-permissions-users-delete
 func (d *DataCenterClient) RevokeUserRepositoryPermission(ctx context.Context, projectKey, repositorySlug, userName string) error {
 	strUrl := fmt.Sprintf("%s/projects/%s/repos/%s/permissions/users?name=%s",
