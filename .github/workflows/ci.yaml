@@ -40,24 +40,55 @@ jobs:
   test:
     runs-on: ubuntu-latest
     # Define any services needed for the test suite (or delete this section)
-    # services:
-    #   postgres:
-    #     image: postgres:16
-    #     ports:
-    #       - "5432:5432"
-    #     env:
-    #       POSTGRES_PASSWORD: secretpassword
+    services:
+      postgres:
+        image: postgres:16
+        # Maps tcp port 5432 on service container to the host
+        ports:
+          - "5432:5432"
+        env:
+          POSTGRES_USER: bitbucket
+          POSTGRES_PASSWORD: bitbucket
+          POSTGRES_DB: bitbucket
+        # needed because the postgres container does not provide a healthcheck
+        options: >-
+          --health-cmd pg_isready 
+          --health-interval 10s 
+          --health-timeout 5s 
+          --health-retries 3
+          --health-start-period 60s
+
+      bitbucket:
+        image: atlassian/bitbucket-server:8.9.4
+        env:
+          JVM_MINIMUM_MEMORY: 2g
+          JVM_MAXIMUM_MEMORY: 4g
+          JDBC_DRIVER: org.postgresql.Driver
+          JDBC_USER: bitbucket
+          JDBC_PASSWORD: bitbucket
+          JDBC_URL: jdbc:postgresql://postgres:5432/bitbucket
+        ports:
+          - '7990:7990'
+        options: >-
+          --health-cmd "curl -f http://localhost:7990/"
+          --health-interval 10s 
+          --health-timeout 5s 
+          --health-retries 3
+          --health-start-period 90s
+
     env:
       BATON_LOG_LEVEL: debug
       # Add any environment variables needed to run baton-bitbucket-datacenter
-      # BATON_BASE_URL: 'http://localhost:8080'
+      BATON_BASE_URL: 'http://localhost:7990'
+      BATON_USERNAME: 'mchavez'
+      BATON_PASSWORD: 'Shrimp2013--'
       # BATON_ACCESS_TOKEN: 'secret_token'
       # The following parameters are passed to grant/revoke commands
       # Change these to the correct IDs for your test data
-      CONNECTOR_GRANT: 'grant:entitlement:group:1234:member:user:9876'
-      CONNECTOR_ENTITLEMENT: 'entitlement:group:1234:member'
-      CONNECTOR_PRINCIPAL: 'user:9876'
+      CONNECTOR_GRANT: 'group:local-group:ADMIN:user:62'
+      CONNECTOR_ENTITLEMENT: 'group:local-group:ADMIN'
       CONNECTOR_PRINCIPAL_TYPE: 'user'
+      CONNECTOR_PRINCIPAL: '62'
     steps:
       - name: Install Go
         uses: actions/setup-go@v4
@@ -75,13 +106,13 @@ jobs:
       #     PGPASSWORD: secretpassword
       - name: Build baton-bitbucket-datacenter
         run: go build ./cmd/baton-bitbucket-datacenter
-      # - name: Run baton-bitbucket-datacenter
-      #   run: ./baton-bitbucket-datacenter
+      - name: Run baton-bitbucket-datacenter
+        run: ./baton-bitbucket-datacenter --bitbucketdc-username ${{ env.BATON_USERNAME }} --bitbucketdc-password ${{ env.BATON_PASSWORD }} --bitbucketdc-baseurl ${{ env.BATON_BASE_URL }}
       - name: Install baton
         run: ./scripts/get-baton.sh && mv baton /usr/local/bin
-      # - name: Check for grant before revoking
-      #   run:
-      #     baton grants --entitlement="${{ env.CONNECTOR_ENTITLEMENT }}" --output-format=json | jq --exit-status ".grants[].principal.id.resource == \"${{ env.CONNECTOR_PRINCIPAL }}\""
+      - name: Check for grant before revoking
+        run:
+          baton grants --entitlement="${{ env.CONNECTOR_ENTITLEMENT }}" --output-format=json | jq --exit-status ".grants[].principal.id.resource == \"${{ env.CONNECTOR_PRINCIPAL }}\""
       # - name: Revoke grants
       #   run: ./baton-bitbucket-datacenter --revoke-grant="${{ env.CONNECTOR_GRANT }}"
       # - name: Check grant was revoked
