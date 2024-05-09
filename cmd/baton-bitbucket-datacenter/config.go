@@ -10,14 +10,19 @@ import (
 
 // config defines the external configuration required for the connector to run.
 type config struct {
-	cli.BaseConfig `mapstructure:",squash"` // Puts the base config options in the same place as the connector options
-	Username       string                   `mapstructure:"username"`
-	Password       string                   `mapstructure:"password"`
+	cli.BaseConfig    `mapstructure:",squash"` // Puts the base config options in the same place as the connector options
+	BitbucketUsername string                   `mapstructure:"bitbucketdc-username"`
+	BitbucketPassword string                   `mapstructure:"bitbucketdc-password"`
+	BitbucketBaseUrl  string                   `mapstructure:"bitbucketdc-baseurl"`
 }
 
 // validateConfig is run after the configuration is loaded, and should return an error if it isn't valid.
 func validateConfig(ctx context.Context, cfg *config) error {
-	if cfg.Username == "" && cfg.Password == "" {
+	if cfg.BitbucketBaseUrl == "" {
+		return fmt.Errorf("baseurl must be provided")
+	}
+
+	if cfg.BitbucketUsername == "" && cfg.BitbucketPassword == "" {
 		return fmt.Errorf("either username or password must be provided")
 	}
 
@@ -26,6 +31,7 @@ func validateConfig(ctx context.Context, cfg *config) error {
 
 // cmdFlags sets the cmdFlags required for the connector.
 func cmdFlags(cmd *cobra.Command) {
-	cmd.PersistentFlags().String("username", "", "Username of administrator used to connect to the BitBucket API. ($BATON_BITBUCKET_USERNAME)")
-	cmd.PersistentFlags().String("password", "", "Application password used to connect to the BitBucket API. ($BATON_BITBUCKET_PASSWORD)")
+	cmd.PersistentFlags().String("bitbucketdc-username", "", "Username of administrator used to connect to the BitBucket(dc) API. ($BATON_BITBUCKETDC_USERNAME)")
+	cmd.PersistentFlags().String("bitbucketdc-password", "", "Application password used to connect to the BitBucket(dc) API. ($BATON_BITBUCKETDC_PASSWORD)")
+	cmd.PersistentFlags().String("bitbucketdc-baseurl", "", "Bitbucket Data Center server. example http://localhost:7990. ($BATON_BITBUCKETDC_BASE_URL)")
 }

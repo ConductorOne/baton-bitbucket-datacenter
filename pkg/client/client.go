@@ -14,8 +14,6 @@ import (
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
 )
 
-const BASEURL = "http://localhost:7990/rest/api/latest"
-
 type DataCenterClient struct {
 	Auth         *auth
 	httpClient   *uhttp.BaseHttpClient
@@ -47,16 +45,31 @@ func (d *DataCenterClient) getPWD() string {
 	return d.Auth.password
 }
 
-func New(ctx context.Context, clientId, clientSecret string) (*DataCenterClient, error) {
+func isValidUrl(baseUrl string) bool {
+	u, err := url.Parse(baseUrl)
+	return err == nil && u.Scheme != "" && u.Host != ""
+}
+
+func New(ctx context.Context, clientId, clientSecret, baseUrl string) (*DataCenterClient, error) {
 	httpClient, err := uhttp.NewClient(ctx, uhttp.WithLogger(true, ctxzap.Extract(ctx)))
 	if err != nil {
 		return nil, err
 	}
 
 	cli := uhttp.NewBaseHttpClient(httpClient)
+	if !isValidUrl(baseUrl) {
+		return nil, fmt.Errorf("the url : %s is not valid", baseUrl)
+	}
+
+	strUrl, err := url.JoinPath(baseUrl, "rest/api/latest")
+	if err != nil {
+		return nil, err
+	}
+
+	// basic authentication
 	dc := DataCenterClient{
 		httpClient:   cli,
-		baseEndpoint: BASEURL,
+		baseEndpoint: strUrl,
 		Auth: &auth{
 			user:     clientId,
 			password: clientSecret,
