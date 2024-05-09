@@ -97,8 +97,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       # Install any dependencies here (or delete this)
-      # - name: Install postgres client
-      #   run: sudo apt install postgresql-client
+      - name: Install postgres client
+        run: sudo apt install postgresql-client
       # Run any fixture setup here (or delete this)
       # - name: Import sql into postgres
       #   run: psql -h localhost --user postgres -f environment.sql
