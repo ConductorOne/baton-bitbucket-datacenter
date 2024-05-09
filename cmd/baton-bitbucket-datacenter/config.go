@@ -19,11 +19,11 @@ type config struct {
 // validateConfig is run after the configuration is loaded, and should return an error if it isn't valid.
 func validateConfig(ctx context.Context, cfg *config) error {
 	if cfg.BitbucketBaseUrl == "" {
-		return fmt.Errorf("baseurl must be provided")
+		return fmt.Errorf("bitbucketdc-baseurl must be provided")
 	}
 
 	if cfg.BitbucketUsername == "" && cfg.BitbucketPassword == "" {
-		return fmt.Errorf("either username or password must be provided")
+		return fmt.Errorf("either bitbucketdc-username or bitbucketdc-password must be provided")
 	}
 
 	return nil
