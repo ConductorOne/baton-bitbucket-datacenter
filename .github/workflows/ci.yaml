@@ -100,10 +100,10 @@ jobs:
       - name: Install postgres client
         run: sudo apt install postgresql-client
       # Run any fixture setup here (or delete this)
-      # - name: Import sql into postgres
-      #   run: psql -h localhost --user postgres -f environment.sql
-      #   env:
-      #     PGPASSWORD: secretpassword
+      - name: Import sql into postgres
+        run: psql -h postgres --user bitbucket -f environment.sql
+        env:
+          PGPASSWORD: secretpassword
       - name: Build baton-bitbucket-datacenter
         run: go build ./cmd/baton-bitbucket-datacenter
       - name: Run baton-bitbucket-datacenter
