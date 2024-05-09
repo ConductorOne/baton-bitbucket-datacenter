@@ -101,7 +101,7 @@ jobs:
         run: sudo apt install postgresql-client
       # Run any fixture setup here (or delete this)
       - name: Import sql into postgres
-        run: psql -h postgres --user bitbucket -f environment.sql
+        run: psql -h localhost --user bitbucket -f environment.sql
         env:
           PGPASSWORD: bitbucket
       - name: Build baton-bitbucket-datacenter
