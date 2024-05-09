@@ -103,7 +103,7 @@ jobs:
       - name: Import sql into postgres
         run: psql -h postgres --user bitbucket -f environment.sql
         env:
-          PGPASSWORD: secretpassword
+          PGPASSWORD: bitbucket
       - name: Build baton-bitbucket-datacenter
         run: go build ./cmd/baton-bitbucket-datacenter
       - name: Run baton-bitbucket-datacenter
