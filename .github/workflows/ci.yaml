@@ -102,7 +102,8 @@ jobs:
       #   run: go build ./cmd/baton-bitbucket-datacenter
       - name: log in postgres
         run: |
-          psql -h localhost -d bitbucket -U bitbucket \c postgres
+          psql -h localhost -d bitbucket -U bitbucket 
+          \c postgres
           psql -h localhost -U bitbucket -c "DROP DATABASE bitbucket WITH (FORCE);"
         env:
           PGPASSWORD: bitbucket
