@@ -51,7 +51,7 @@ jobs:
         env:
           POSTGRES_USER: bitbucket
           POSTGRES_PASSWORD: bitbucket
-          POSTGRES_DB: bitbucket
+          POSTGRES_DB: bucket
         # needed because the postgres container does not provide a healthcheck
         options: >-
           --health-cmd pg_isready 
@@ -68,7 +68,7 @@ jobs:
           JDBC_DRIVER: org.postgresql.Driver
           JDBC_USER: bitbucket
           JDBC_PASSWORD: bitbucket
-          JDBC_URL: jdbc:postgresql://postgres:5432/bitbucket
+          JDBC_URL: jdbc:postgresql://postgres:5432/bucket
         ports:
           - '7990:7990'
         options: >-
@@ -99,16 +99,16 @@ jobs:
         uses: actions/checkout@v4
       - name: Install postgres client
         run: sudo apt install postgresql-client
-      - name: Remove postgres db
-        run: |
-          sudo systemctl stop postgresql.service
-          psql -h localhost --user bitbucket -c "drop database bitbucket"
-        env:
-          PGPASSWORD: bitbucket
-      # - name: Import sql into postgres
-      #   run: psql -h localhost --user bitbucket -f environment.sql
+      # - name: Remove postgres db
+      #   run: |
+      #     sudo systemctl stop postgresql.service
+      #     psql -h localhost --user bitbucket -c "drop database bitbucket"
       #   env:
       #     PGPASSWORD: bitbucket
+      - name: Import sql into postgres
+        run: psql -h localhost --user bitbucket -f environment.sql
+        env:
+          PGPASSWORD: bitbucket
       - name: Build baton-bitbucket-datacenter
         run: go build ./cmd/baton-bitbucket-datacenter
       - name: Run baton-bitbucket-datacenter
