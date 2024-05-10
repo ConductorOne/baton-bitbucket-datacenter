@@ -66,8 +66,8 @@ jobs:
           JVM_MINIMUM_MEMORY: 2g
           JVM_MAXIMUM_MEMORY: 4g
           JDBC_DRIVER: org.postgresql.Driver
-          JDBC_USER: bucket
-          JDBC_PASSWORD: bucket
+          JDBC_USER: bitbucket
+          JDBC_PASSWORD: bitbucket
           JDBC_URL: jdbc:postgresql://postgres:5432/bitbucket
         ports:
           - '7990:7990'
