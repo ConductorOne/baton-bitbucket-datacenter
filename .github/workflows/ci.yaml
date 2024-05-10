@@ -101,7 +101,9 @@ jobs:
       - name: Build baton-bitbucket-datacenter
         run: go build ./cmd/baton-bitbucket-datacenter
       - name: Import sql into postgres
-        run: psql -h localhost --user bitbucket -f data.sql
+        run: |
+          psql -h localhost --user bitbucket -f schema.sql
+          psql -h localhost --user bitbucket -f data.sql
         env:
           PGPASSWORD: bitbucket
       - name: Run baton-bitbucket-datacenter
