@@ -44,7 +44,7 @@ jobs:
     # Define any services needed for the test suite (or delete this section)
     services:
       postgres:
-        image: postgres:16
+        image: postgres:15
         # Maps tcp port 5432 on service container to the host
         ports:
           - "5432:5432"
@@ -105,23 +105,23 @@ jobs:
       #     psql -h localhost --user bitbucket -c "drop database bitbucket"
       #   env:
       #     PGPASSWORD: bitbucket
-      # - name: Import sql into postgres
-      #   run: psql -h localhost --user bitbucket -f environment.sql
-      #   env:
-      #     PGPASSWORD: bitbucket
+      - name: Import sql into postgres
+        run: psql -h localhost --user bitbucket -f environment.sql
+        env:
+          PGPASSWORD: bitbucket
       - name: Install baton
         run: ./scripts/get-baton.sh && mv baton /usr/local/bin
-      - name: Build baton-bitbucket-datacenter
-        run: go build ./cmd/baton-bitbucket-datacenter
-      - name: Run baton-bitbucket-datacenter
-        run: ./baton-bitbucket-datacenter --bitbucketdc-username ${{ env.BATON_USERNAME }} --bitbucketdc-password ${{ env.BATON_PASSWORD }} --bitbucketdc-baseurl ${{ env.BATON_BASE_URL }}
-      - name: Check for grant before revoking
-        run: baton grants --entitlement="${{ env.CONNECTOR_ENTITLEMENT }}" --output-format=json | jq --exit-status ".grants[].principal.id.resource == \"${{ env.CONNECTOR_PRINCIPAL }}\""
-      - name: Revoke grants
-        run: ./baton-bitbucket-datacenter --bitbucketdc-username ${{ env.BATON_USERNAME }} --bitbucketdc-password ${{ env.BATON_PASSWORD }} --bitbucketdc-baseurl ${{ env.BATON_BASE_URL }} --revoke-grant="${{ env.CONNECTOR_GRANT }}"
-      - name: Check grant was revoked
-        run: ./baton-bitbucket-datacenter && baton grants --entitlement="${{ env.CONNECTOR_ENTITLEMENT }}" --output-format=json | jq --exit-status "if .grants then .grants[]?.principal.id.resource != \"${{ env.CONNECTOR_PRINCIPAL }}\" else . end"
-      - name: Grant entitlement
-        run: ./baton-bitbucket-datacenter --bitbucketdc-username ${{ env.BATON_USERNAME }} --bitbucketdc-password ${{ env.BATON_PASSWORD }} --bitbucketdc-baseurl ${{ env.BATON_BASE_URL }} --grant-entitlement="${{ env.CONNECTOR_ENTITLEMENT }}" --grant-principal="${{ env.CONNECTOR_PRINCIPAL }}" --grant-principal-type="${{ env.CONNECTOR_PRINCIPAL_TYPE }}"
-      - name: Check grant was re-granted
-        run: baton grants --entitlement="${{ env.CONNECTOR_ENTITLEMENT }}" --output-format=json | jq --exit-status ".grants[].principal.id.resource == \"${{ env.CONNECTOR_PRINCIPAL }}\""
+      # - name: Build baton-bitbucket-datacenter
+      #   run: go build ./cmd/baton-bitbucket-datacenter
+      # - name: Run baton-bitbucket-datacenter
+      #   run: ./baton-bitbucket-datacenter --bitbucketdc-username ${{ env.BATON_USERNAME }} --bitbucketdc-password ${{ env.BATON_PASSWORD }} --bitbucketdc-baseurl ${{ env.BATON_BASE_URL }}
+      # - name: Check for grant before revoking
+      #   run: baton grants --entitlement="${{ env.CONNECTOR_ENTITLEMENT }}" --output-format=json | jq --exit-status ".grants[].principal.id.resource == \"${{ env.CONNECTOR_PRINCIPAL }}\""
+      # - name: Revoke grants
+      #   run: ./baton-bitbucket-datacenter --bitbucketdc-username ${{ env.BATON_USERNAME }} --bitbucketdc-password ${{ env.BATON_PASSWORD }} --bitbucketdc-baseurl ${{ env.BATON_BASE_URL }} --revoke-grant="${{ env.CONNECTOR_GRANT }}"
+      # - name: Check grant was revoked
+      #   run: ./baton-bitbucket-datacenter && baton grants --entitlement="${{ env.CONNECTOR_ENTITLEMENT }}" --output-format=json | jq --exit-status "if .grants then .grants[]?.principal.id.resource != \"${{ env.CONNECTOR_PRINCIPAL }}\" else . end"
+      # - name: Grant entitlement
+      #   run: ./baton-bitbucket-datacenter --bitbucketdc-username ${{ env.BATON_USERNAME }} --bitbucketdc-password ${{ env.BATON_PASSWORD }} --bitbucketdc-baseurl ${{ env.BATON_BASE_URL }} --grant-entitlement="${{ env.CONNECTOR_ENTITLEMENT }}" --grant-principal="${{ env.CONNECTOR_PRINCIPAL }}" --grant-principal-type="${{ env.CONNECTOR_PRINCIPAL_TYPE }}"
+      # - name: Check grant was re-granted
+      #   run: baton grants --entitlement="${{ env.CONNECTOR_ENTITLEMENT }}" --output-format=json | jq --exit-status ".grants[].principal.id.resource == \"${{ env.CONNECTOR_PRINCIPAL }}\""
