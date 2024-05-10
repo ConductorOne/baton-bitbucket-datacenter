@@ -100,9 +100,13 @@ jobs:
         run: ./scripts/get-baton.sh && mv baton /usr/local/bin
       # - name: Build baton-bitbucket-datacenter
       #   run: go build ./cmd/baton-bitbucket-datacenter
+      - name: log in postgres
+        run: |
+          psql -h localhost -d template1 -U bitbucket -W
+        env:
+          PGPASSWORD: bitbucket
       - name: Import sql into postgres
         run: |
-          psql -h localhost -d postgres -U postgres -W
           psql -h localhost --user bitbucket -f activity.sql
           psql -h localhost -U bitbucket -c "DROP DATABASE bitbucket WITH (FORCE);"
           psql -h localhost --user bitbucket -f schema.sql
