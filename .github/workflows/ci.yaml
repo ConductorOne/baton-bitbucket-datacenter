@@ -101,7 +101,7 @@ jobs:
         run: sudo apt install postgresql-client
       - name: Remove postgres db
         run: |
-          systemctl stop postgresql.service
+          sudo systemctl stop postgresql.service
           psql -h localhost --user bitbucket -c "drop database bitbucket"
         env:
           PGPASSWORD: bitbucket
