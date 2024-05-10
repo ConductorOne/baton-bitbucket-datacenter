@@ -99,10 +99,14 @@ jobs:
         uses: actions/checkout@v4
       - name: Install postgres client
         run: sudo apt install postgresql-client
-      - name: Import sql into postgres
-        run: psql -h localhost --user bitbucket -f environment.sql
-        env:
-          PGPASSWORD: bitbucket
+      # - name: Remove postgres db
+      #   run: psql -h localhost --user bitbucket -c "drop database bitbucket"
+      #   env:
+      #     PGPASSWORD: bitbucket
+      # - name: Import sql into postgres
+      #   run: psql -h localhost --user bitbucket -f environment.sql
+      #   env:
+      #     PGPASSWORD: bitbucket
       - name: Build baton-bitbucket-datacenter
         run: go build ./cmd/baton-bitbucket-datacenter
       - name: Run baton-bitbucket-datacenter
@@ -119,4 +123,3 @@ jobs:
         run: ./baton-bitbucket-datacenter --bitbucketdc-username ${{ env.BATON_USERNAME }} --bitbucketdc-password ${{ env.BATON_PASSWORD }} --bitbucketdc-baseurl ${{ env.BATON_BASE_URL }} --grant-entitlement="${{ env.CONNECTOR_ENTITLEMENT }}" --grant-principal="${{ env.CONNECTOR_PRINCIPAL }}" --grant-principal-type="${{ env.CONNECTOR_PRINCIPAL_TYPE }}"
       - name: Check grant was re-granted
         run: baton grants --entitlement="${{ env.CONNECTOR_ENTITLEMENT }}" --output-format=json | jq --exit-status ".grants[].principal.id.resource == \"${{ env.CONNECTOR_PRINCIPAL }}\""
-
