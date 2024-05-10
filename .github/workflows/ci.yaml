@@ -100,7 +100,9 @@ jobs:
       - name: Install postgres client
         run: sudo apt install postgresql-client
       - name: Remove postgres db
-        run: dropdb bitbucket --force
+        run: |
+          pg_ctl stop
+          psql -h localhost --user bitbucket -c "drop database bitbucket"
         env:
           PGPASSWORD: bitbucket
       # - name: Import sql into postgres
