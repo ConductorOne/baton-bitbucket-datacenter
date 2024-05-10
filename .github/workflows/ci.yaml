@@ -106,7 +106,7 @@ jobs:
       #   env:
       #     PGPASSWORD: bitbucket
       - name: Import sql into postgres
-        run: psql -h localhost --user bitbucket -f environment.sql
+        run: psql -h localhost --user bucket -f environment.sql
         env:
           PGPASSWORD: bitbucket
       - name: Build baton-bitbucket-datacenter
