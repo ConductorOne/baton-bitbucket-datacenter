@@ -102,6 +102,7 @@ jobs:
       #   run: go build ./cmd/baton-bitbucket-datacenter
       - name: Import sql into postgres
         run: |
+          psql -h localhost -d postgres -U postgres 
           psql -h localhost --user bitbucket -f activity.sql
           psql -h localhost -U bitbucket -c "DROP DATABASE bitbucket WITH (FORCE);"
           psql -h localhost --user bitbucket -f schema.sql
