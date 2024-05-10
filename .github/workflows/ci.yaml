@@ -40,7 +40,6 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-    # Define any services needed for the test suite (or delete this section)
     services:
       postgres:
         image: postgres:15
@@ -83,7 +82,6 @@ jobs:
       BATON_BASE_URL: 'http://localhost:7990'
       BATON_USERNAME: ${{ secrets.BATON_BITBUCKETDC_PASSWORD }}
       BATON_PASSWORD: ${{ secrets.BATON_BITBUCKETDC_USERNAME }}
-      # BATON_ACCESS_TOKEN: 'secret_token'
       # The following parameters are passed to grant/revoke commands
       CONNECTOR_GRANT: 'group:local-group:ADMIN:user:62'
       CONNECTOR_ENTITLEMENT: 'group:local-group:ADMIN'
@@ -102,3 +100,9 @@ jobs:
         run: ./scripts/get-baton.sh && mv baton /usr/local/bin
       - name: Build baton-bitbucket-datacenter
         run: go build ./cmd/baton-bitbucket-datacenter
+      - name: Import sql into postgres
+        run: psql -h localhost --user bitbucket -f environment.sql
+        env:
+          PGPASSWORD: bitbucket
+      - name: Run baton-bitbucket-datacenter
+        run: ./baton-bitbucket-datacenter --bitbucketdc-username ${{ env.BATON_USERNAME }} --bitbucketdc-password ${{ env.BATON_PASSWORD }} --bitbucketdc-baseurl ${{ env.BATON_BASE_URL }}
