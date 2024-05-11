@@ -94,8 +94,6 @@ jobs:
           go-version: 1.22.x
       - name: Checkout code
         uses: actions/checkout@v4
-      # - name: Install postgres client
-      #   run: sudo apt install postgresql-client
       - name: Install baton
         run: ./scripts/get-baton.sh && mv baton /usr/local/bin
       - name: Import sql into postgres
@@ -128,5 +126,5 @@ jobs:
       #   run: |
       #     psql -c "DROP DATABASE bitbucket;"
 
-      - name: Run baton-bitbucket-datacenter
-        run: ./baton-bitbucket-datacenter --bitbucketdc-username ${{ env.BATON_USERNAME }} --bitbucketdc-password ${{ env.BATON_PASSWORD }} --bitbucketdc-baseurl ${{ env.BATON_BASE_URL }}
+      # - name: Run baton-bitbucket-datacenter
+      #   run: ./baton-bitbucket-datacenter --bitbucketdc-username ${{ env.BATON_USERNAME }} --bitbucketdc-password ${{ env.BATON_PASSWORD }} --bitbucketdc-baseurl ${{ env.BATON_BASE_URL }}
