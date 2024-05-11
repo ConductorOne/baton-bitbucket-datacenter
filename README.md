@@ -13,8 +13,6 @@ Each one of these methods are configurable with permissions (Read, Write, Admin)
 - Read: `Group`, `User`, `Project`, `Repository`
 - Admin: `Project`, `Repository`
 
-Mentioned auth methods like API Access Tokens can be scoped to different resources, and the connector only allows the workspace-scoped token or the user-scoped password with required permissions described above.
-
 # Getting Started
 
 ## brew
