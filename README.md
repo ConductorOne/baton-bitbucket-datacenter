@@ -7,7 +7,7 @@ Check out [Baton](https://github.com/conductorone/baton) to learn more about the
 
 # Prerequisites
 
-To work with the connector, you can choose from multiple authentication methods. You can either use an application password with login username and generated password, an API access token, or a consumer key and secret for oauth flow.
+To work with the connector, you can use basic authentication, with a username and password.
 
 Each one of these methods are configurable with permissions (Read, Write, Admin) to access the Bitbucket API. The permissions required for this connector are:
 - Read: `Group`, `User`, `Project`, `Repository`
