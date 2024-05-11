@@ -94,8 +94,8 @@ jobs:
           go-version: 1.22.x
       - name: Checkout code
         uses: actions/checkout@v4
-      - name: Install postgres client
-        run: sudo apt install postgresql-client
+      # - name: Install postgres client
+      #   run: sudo apt install postgresql-client
       - name: Install baton
         run: ./scripts/get-baton.sh && mv baton /usr/local/bin
       # - name: Build baton-bitbucket-datacenter
