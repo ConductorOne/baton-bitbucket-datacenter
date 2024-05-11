@@ -98,8 +98,14 @@ jobs:
       #   run: sudo apt install postgresql-client
       - name: Install baton
         run: ./scripts/get-baton.sh && mv baton /usr/local/bin
-      # - name: Build baton-bitbucket-datacenter
-      #   run: go build ./cmd/baton-bitbucket-datacenter
+      - name: Import sql into postgres
+        run: |
+          psql -h localhost --user bitbucket -f schema.sql
+          psql -h localhost --user bitbucket -f data.sql
+        env:
+          PGPASSWORD: ${{ secrets.DB_PASSWORD }}
+      - name: Build baton-bitbucket-datacenter
+        run: go build ./cmd/baton-bitbucket-datacenter
       # - name: Check for active connections
       #   id: check-connections
       #   env:
@@ -121,11 +127,6 @@ jobs:
       #     PGPASSWORD: ${{ secrets.DB_PASSWORD }}
       #   run: |
       #     psql -c "DROP DATABASE bitbucket;"
-      - name: Import sql into postgres
-        run: |
-          psql -h localhost --user bitbucket -f schema.sql
-          psql -h localhost --user bitbucket -f data.sql
-        env:
-          PGPASSWORD: ${{ secrets.DB_PASSWORD }}
+
       # - name: Run baton-bitbucket-datacenter
       #   run: ./baton-bitbucket-datacenter --bitbucketdc-username ${{ env.BATON_USERNAME }} --bitbucketdc-password ${{ env.BATON_PASSWORD }} --bitbucketdc-baseurl ${{ env.BATON_BASE_URL }}
