@@ -100,32 +100,32 @@ jobs:
         run: ./scripts/get-baton.sh && mv baton /usr/local/bin
       # - name: Build baton-bitbucket-datacenter
       #   run: go build ./cmd/baton-bitbucket-datacenter
-      - name: Check for active connections
-        id: check-connections
-        env:
-          PGHOST: localhost
-          PGUSER: bitbucket
-          PGPASSWORD: ${{ secrets.DB_PASSWORD }}
-        run: |
-          ACTIVE_CONNECTIONS=$(psql -tAc "SELECT count(*) FROM pg_stat_activity WHERE datname = 'bitbucket';")
-          if [ $ACTIVE_CONNECTIONS -gt 0 ]; then
-            echo "There are active connections to the database. Terminating connections..."
-            psql -c "SELECT pg_terminate_backend(pg_stat_activity.pid) FROM pg_stat_activity WHERE pg_stat_activity.datname = 'bitbucket' AND pid <> pg_backend_pid();"
-          else
-            echo "No active connections to the database."
-          fi
-      - name: Drop database
-        env:
-          PGHOST: localhost
-          PGUSER: bitbucket
-          PGPASSWORD: ${{ secrets.DB_PASSWORD }}
-        run: |
-          psql -c "DROP DATABASE bitbucket;"
-      # - name: Import sql into postgres
-      #   run: |
-      #     psql -h localhost --user bitbucket -f schema.sql
-      #     psql -h localhost --user bitbucket -f data.sql
+      # - name: Check for active connections
+      #   id: check-connections
       #   env:
-      #     PGPASSWORD: bitbucket
+      #     PGHOST: localhost
+      #     PGUSER: bitbucket
+      #     PGPASSWORD: ${{ secrets.DB_PASSWORD }}
+      #   run: |
+      #     ACTIVE_CONNECTIONS=$(psql -tAc "SELECT count(*) FROM pg_stat_activity WHERE datname = 'bitbucket';")
+      #     if [ $ACTIVE_CONNECTIONS -gt 0 ]; then
+      #       echo "There are active connections to the database. Terminating connections..."
+      #       psql -c "SELECT pg_terminate_backend(pg_stat_activity.pid) FROM pg_stat_activity WHERE pg_stat_activity.datname = 'bitbucket' AND pid <> pg_backend_pid();"
+      #     else
+      #       echo "No active connections to the database."
+      #     fi
+      # - name: Drop database
+      #   env:
+      #     PGHOST: localhost
+      #     PGUSER: bitbucket
+      #     PGPASSWORD: ${{ secrets.DB_PASSWORD }}
+      #   run: |
+      #     psql -c "DROP DATABASE bitbucket;"
+      - name: Import sql into postgres
+        run: |
+          psql -h localhost --user bitbucket -f schema.sql
+          psql -h localhost --user bitbucket -f data.sql
+        env:
+          PGPASSWORD: ${{ secrets.DB_PASSWORD }}
       # - name: Run baton-bitbucket-datacenter
       #   run: ./baton-bitbucket-datacenter --bitbucketdc-username ${{ env.BATON_USERNAME }} --bitbucketdc-password ${{ env.BATON_PASSWORD }} --bitbucketdc-baseurl ${{ env.BATON_BASE_URL }}
