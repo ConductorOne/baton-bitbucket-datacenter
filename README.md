@@ -18,15 +18,15 @@ Each one of these methods are configurable with permissions (Read, Write, Admin)
 ## brew
 
 ```
-brew install conductorone/baton/baton conductorone/baton/baton-bitbucket
-BATON_USERNAME=username BATON_PASSWORD=password baton-bitbucket
+brew install conductorone/baton/baton conductorone/baton/baton-bitbucket-datacenter
+BATON_BITBUCKETDC_USERNAME=bitbucketdc-username BATON_BITBUCKETDC_PASSWORD=bitbucketdc-password BATON_BITBUCKETDC_BASE_URL=bitbucketdc-baseurl baton-bitbucket-datacenter
 baton resources
 ```
 
 ## docker
 
 ```
-docker run --rm -v $(pwd):/out -e BATON_TOKEN=token ghcr.io/conductorone/baton-bitbucket:latest -f "/out/sync.c1z"
+docker run --rm -v $(pwd):/out -e BATON_BITBUCKETDC_USERNAME=bitbucketdc-username BATON_BITBUCKETDC_PASSWORD=bitbucketdc-password BATON_BITBUCKETDC_BASE_URL=bitbucketdc-baseurl ghcr.io/conductorone/baton-bitbucket-datacenter:latest -f "/out/sync.c1z"
 docker run --rm -v $(pwd):/out ghcr.io/conductorone/baton:latest -f "/out/sync.c1z" resources
 ```
 
@@ -34,8 +34,8 @@ docker run --rm -v $(pwd):/out ghcr.io/conductorone/baton:latest -f "/out/sync.c
 
 ```
 go install github.com/conductorone/baton/cmd/baton@main
-go install github.com/conductorone/baton-bitbucket/cmd/baton-bitbucket@main
-BATON_CONSUMER_ID=consumerKey BATON_CONSUMER_SECRET=consumerSecret baton-bitbucket
+go install github.com/conductorone/baton-bitbucket-datacenter/cmd/baton-bitbucket-datacenter@main
+BATON_BITBUCKETDC_USERNAME=bitbucketdc-username BATON_BITBUCKETDC_PASSWORD=bitbucketdc-password BATON_BITBUCKETDC_BASE_URL=bitbucketdc-baseurl baton-bitbucket-datacenter
 baton resources
 ```
 
