@@ -117,7 +117,7 @@ jobs:
       - name: Drop database
         env:
           PGHOST: localhost
-          PGUSER: postgres
+          PGUSER: bitbucket
           PGPASSWORD: ${{ secrets.DB_PASSWORD }}
         run: |
           psql -c "DROP DATABASE bitbucket;"
