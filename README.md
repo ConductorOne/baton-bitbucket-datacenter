@@ -1,7 +1,7 @@
 
 # `baton-bitbucket-datacenter` [![Go Reference](https://pkg.go.dev/badge/github.com/conductorone/baton-bitbucket.svg)](https://pkg.go.dev/github.com/conductorone/baton-bitbucket) ![main ci](https://github.com/conductorone/baton-zendesk/actions/workflows/main.yaml/badge.svg)
 
-`baton-bitbucket-datacenter` is a connector for Bitbucket built using the [Baton SDK](https://github.com/conductorone/baton-sdk). It communicates with the Bitbucket User provisioning API to sync data about workspaces, user groups, users, projects and their repositories.
+`baton-bitbucket-datacenter` is a connector for Bitbucket built using the [Baton SDK](https://github.com/conductorone/baton-sdk). It communicates with the Bitbucket User provisioning API to sync data about user groups, users, projects and their repositories.
 
 Check out [Baton](https://github.com/conductorone/baton) to learn more about the project in general.
 
@@ -47,8 +47,6 @@ baton resources
 - Users
 - Projects
 - Repositories
-
-By default, `baton-bitbucket-datacenter` will sync information from workspaces based on provided credential. You can specify exactly which workspaces you would like to sync using the `--workspaces` flag.
 
 # Contributing, Support and Issues
 
