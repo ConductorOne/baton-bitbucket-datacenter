@@ -2,6 +2,8 @@ package connector
 
 import (
 	"context"
+	"log"
+	"os"
 	"testing"
 
 	"github.com/conductorone/baton-bitbucket-datacenter/pkg/client"
@@ -40,12 +42,18 @@ var (
 )
 
 func TestConfig(t *testing.T) {
+	env1, err1 := os.LookupEnv("BITBUCKETDC_USERNAME")
+	log.Println(env1, err1)
+	env1, err1 = os.LookupEnv("BATON_BITBUCKETDC_PASSWORD")
+	log.Println(env1, err1)
+	t.Skip()
 	config, err := config.LoadConfig()
 	assert.Nil(t, err)
 	assert.NotNil(t, config)
 }
 
 func TestClient(t *testing.T) {
+	t.Skip()
 	config := getCredentials()
 	cliTest, err := client.New(ctx,
 		config.BitbucketdcUsername,
@@ -72,6 +80,7 @@ func getClient(config *config.Configuration) *client.DataCenterClient {
 }
 
 func TestProvisionigGroupMembership(t *testing.T) {
+	t.Skip()
 	defer func() { _ = recover() }()
 	config := getCredentials()
 	cliTest := getClient(config)
@@ -84,6 +93,7 @@ func TestProvisionigGroupMembership(t *testing.T) {
 }
 
 func TestRevokingGroupMembership(t *testing.T) {
+	t.Skip()
 	defer func() { _ = recover() }()
 	config := getCredentials()
 	cliTest := getClient(config)

@@ -22,6 +22,9 @@ jobs:
         go-version: [1.22.x]
         platform: [ubuntu-latest]
     runs-on: ${{ matrix.platform }}
+    env:
+      BITBUCKETDC_USERNAME: ${{ secrets.BATON_BITBUCKETDC_USERNAME }}
+      BITBUCKETDC_PASSWORD: ${{ secrets.BATON_BITBUCKETDC_PASSWORD }}
     steps:
       - name: Install Go
         if: success()
@@ -37,6 +40,8 @@ jobs:
         uses: guyarb/golang-test-annotations@v0.5.1
         with:
           test-results: test.json
+      - name: Environment list
+        run: env
 
   test:
     runs-on: ubuntu-latest
@@ -80,8 +85,8 @@ jobs:
       BATON_LOG_LEVEL: debug
       # Add any environment variables needed to run baton-bitbucket-datacenter
       BATON_BASE_URL: 'http://localhost:7990'
-      BATON_USERNAME: ${{ secrets.BATON_BITBUCKETDC_PASSWORD }}
-      BATON_PASSWORD: ${{ secrets.BATON_BITBUCKETDC_USERNAME }}
+      BATON_USERNAME: ${{ secrets.BATON_BITBUCKETDC_USERNAME }}
+      BATON_PASSWORD: ${{ secrets.BATON_BITBUCKETDC_PASSWORD }}
       # The following parameters are passed to grant/revoke commands
       CONNECTOR_GRANT: 'group:local-group:ADMIN:user:62'
       CONNECTOR_ENTITLEMENT: 'group:local-group:ADMIN'
