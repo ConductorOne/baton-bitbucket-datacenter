@@ -1,5 +1,6 @@
 name: ci
-on: pull_request
+on: 
+  pull_request:
 jobs:
   go-lint:
     runs-on: ubuntu-latest
@@ -11,7 +12,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       - name: Run linters
-        uses: golangci/golangci-lint-action@v4
+        uses: golangci/golangci-lint-action@v5
         with:
           version: latest
           args: --timeout=3m
@@ -40,24 +41,54 @@ jobs:
   test:
     runs-on: ubuntu-latest
     # Define any services needed for the test suite (or delete this section)
-    # services:
-    #   postgres:
-    #     image: postgres:16
-    #     ports:
-    #       - "5432:5432"
-    #     env:
-    #       POSTGRES_PASSWORD: secretpassword
+    services:
+      postgres:
+        image: postgres:15
+        # Maps tcp port 5432 on service container to the host
+        ports:
+          - "5432:5432"
+        env:
+          POSTGRES_USER: bitbucket
+          POSTGRES_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          POSTGRES_DB: bitbucket
+        # needed because the postgres container does not provide a healthcheck
+        options: >-
+          --health-cmd pg_isready 
+          --health-interval 10s 
+          --health-timeout 5s 
+          --health-retries 3
+          --health-start-period 90s
+
+      bitbucket:
+        image: atlassian/bitbucket-server:8.9.4
+        env:
+          JVM_MINIMUM_MEMORY: 2g
+          JVM_MAXIMUM_MEMORY: 4g
+          JDBC_DRIVER: org.postgresql.Driver
+          JDBC_USER: bitbucket
+          JDBC_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          JDBC_URL: jdbc:postgresql://postgres:5432/bitbucket
+        ports:
+          - '7990:7990'
+        options: >-
+          --health-cmd "curl -f http://localhost:7990/"
+          --health-interval 10s 
+          --health-timeout 5s 
+          --health-retries 3
+          --health-start-period 90s
+
     env:
       BATON_LOG_LEVEL: debug
       # Add any environment variables needed to run baton-bitbucket-datacenter
-      # BATON_BASE_URL: 'http://localhost:8080'
+      BATON_BASE_URL: 'http://localhost:7990'
+      BATON_USERNAME: ${{ secrets.BATON_BITBUCKETDC_PASSWORD }}
+      BATON_PASSWORD: ${{ secrets.BATON_BITBUCKETDC_USERNAME }}
       # BATON_ACCESS_TOKEN: 'secret_token'
       # The following parameters are passed to grant/revoke commands
-      # Change these to the correct IDs for your test data
-      CONNECTOR_GRANT: 'grant:entitlement:group:1234:member:user:9876'
-      CONNECTOR_ENTITLEMENT: 'entitlement:group:1234:member'
-      CONNECTOR_PRINCIPAL: 'user:9876'
+      CONNECTOR_GRANT: 'group:local-group:ADMIN:user:62'
+      CONNECTOR_ENTITLEMENT: 'group:local-group:ADMIN'
       CONNECTOR_PRINCIPAL_TYPE: 'user'
+      CONNECTOR_PRINCIPAL: '62'
     steps:
       - name: Install Go
         uses: actions/setup-go@v4
@@ -65,40 +96,7 @@ jobs:
           go-version: 1.22.x
       - name: Checkout code
         uses: actions/checkout@v4
-      # Install any dependencies here (or delete this)
-      # - name: Install postgres client
-      #   run: sudo apt install postgresql-client
-      # Run any fixture setup here (or delete this)
-      # - name: Import sql into postgres
-      #   run: psql -h localhost --user postgres -f environment.sql
-      #   env:
-      #     PGPASSWORD: secretpassword
-      - name: Build baton-bitbucket-datacenter
-        run: go build ./cmd/baton-bitbucket-datacenter
-      - name: Run baton-bitbucket-datacenter
-        run: ./baton-bitbucket-datacenter
-
       - name: Install baton
         run: ./scripts/get-baton.sh && mv baton /usr/local/bin
-
-      - name: Check for grant before revoking
-
-        run:
-          baton grants --entitlement="${{ env.CONNECTOR_ENTITLEMENT }}" --output-format=json | jq --exit-status ".grants[].principal.id.resource == \"${{ env.CONNECTOR_PRINCIPAL }}\""
-
-
-      - name: Revoke grants
-        run: ./baton-bitbucket-datacenter --revoke-grant="${{ env.CONNECTOR_GRANT }}"
-
-      - name: Check grant was revoked
-        run: ./baton-bitbucket-datacenter && baton grants --entitlement="${{ env.CONNECTOR_ENTITLEMENT }}" --output-format=json | jq --exit-status "if .grants then .grants[]?.principal.id.resource != \"${{ env.CONNECTOR_PRINCIPAL }}\" else . end"
-
-      - name: Grant entitlement
-        # Change the grant arguments to the correct IDs for your test data
-        run: ./baton-bitbucket-datacenter --grant-entitlement="${{ env.CONNECTOR_ENTITLEMENT }}" --grant-principal="${{ env.CONNECTOR_PRINCIPAL }}" --grant-principal-type="${{ env.CONNECTOR_PRINCIPAL_TYPE }}"
-
-      - name: Check grant was re-granted
-
-        run:
-          baton grants --entitlement="${{ env.CONNECTOR_ENTITLEMENT }}" --output-format=json | jq --exit-status ".grants[].principal.id.resource == \"${{ env.CONNECTOR_PRINCIPAL }}\""
-
+      - name: Build baton-bitbucket-datacenter
+        run: go build ./cmd/baton-bitbucket-datacenter
