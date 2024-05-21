@@ -72,7 +72,7 @@ jobs:
           - '7990:7990'
         options: >-
           --health-cmd "curl -f http://localhost:7990/"
-          --health-interval 10s 
+          --health-interval 30s 
           --health-timeout 5s 
           --health-retries 3
           --health-start-period 90s
