@@ -57,7 +57,7 @@ jobs:
           --health-interval 10s 
           --health-timeout 5s 
           --health-retries 3
-          --health-start-period 90s
+          --health-start-period 300s
 
       bitbucket:
         image: atlassian/bitbucket-server:8.9.4
@@ -72,7 +72,7 @@ jobs:
           - '7990:7990'
         options: >-
           --health-cmd "curl -f http://localhost:7990/"
-          --health-interval 30s 
+          --health-interval 10s 
           --health-timeout 5s 
           --health-retries 3
           --health-start-period 90s
