@@ -103,8 +103,8 @@ jobs:
           psql -h localhost --user bitbucket -f data.sql
         env:
           PGPASSWORD: ${{ secrets.DB_PASSWORD }}
-      - name: Wait for five minutes 
-        run: sleep 300 # 300 seconds 
+      # - name: Wait for five minutes 
+      #   run: sleep 300 # 300 seconds 
       - name: Build baton-bitbucket-datacenter
         run: go build ./cmd/baton-bitbucket-datacenter
       # - name: Run baton-bitbucket-datacenter
