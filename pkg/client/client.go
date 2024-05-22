@@ -15,13 +15,41 @@ import (
 )
 
 type DataCenterClient struct {
-	Auth         *auth
+	auth         *auth
 	httpClient   *uhttp.BaseHttpClient
 	baseEndpoint string
 }
 
 type auth struct {
 	user, password string
+	bearerToken    string
+}
+
+func NewClient() *DataCenterClient {
+	return &DataCenterClient{
+		httpClient:   &uhttp.BaseHttpClient{},
+		baseEndpoint: "",
+		auth: &auth{
+			user:        "",
+			password:    "",
+			bearerToken: "",
+		},
+	}
+}
+
+func (d *DataCenterClient) WithUser(bitbucketUsername string) *DataCenterClient {
+	d.auth.user = bitbucketUsername
+	return d
+}
+
+func (d *DataCenterClient) WithPassword(bitbucketPassword string) *DataCenterClient {
+	d.auth.password = bitbucketPassword
+	return d
+}
+
+func (d *DataCenterClient) WithBitbucketToken(bitbucketToken string) *DataCenterClient {
+	d.auth.password = bitbucketToken
+	return d
 }
 
 func WithAuthorizationBearerHeader(token string) uhttp.RequestOption {
@@ -37,12 +65,24 @@ func WithSetBasicAuthHeader(username, password string) uhttp.RequestOption {
 	return uhttp.WithHeader("Authorization", "Basic "+basicAuth(username, password))
 }
 
+func (d *DataCenterClient) getToken() string {
+	return d.auth.bearerToken
+}
+
 func (d *DataCenterClient) getUser() string {
-	return d.Auth.user
+	return d.auth.user
 }
 
 func (d *DataCenterClient) getPWD() string {
-	return d.Auth.password
+	return d.auth.password
+}
+
+func (d *DataCenterClient) CheckCredentials() bool {
+	if (d.getUser() != "" && d.getPWD() != "") || d.getToken() != "" {
+		return true
+	}
+
+	return false
 }
 
 func isValidUrl(baseUrl string) bool {
@@ -50,7 +90,12 @@ func isValidUrl(baseUrl string) bool {
 	return err == nil && u.Scheme != "" && u.Host != ""
 }
 
-func New(ctx context.Context, clientId, clientSecret, baseUrl string) (*DataCenterClient, error) {
+func New(ctx context.Context, baseUrl string, cliConn *DataCenterClient) (*DataCenterClient, error) {
+	var (
+		clientId     = cliConn.getUser()
+		clientSecret = cliConn.getPWD()
+		clientToken  = cliConn.getToken()
+	)
 	httpClient, err := uhttp.NewClient(ctx, uhttp.WithLogger(true, ctxzap.Extract(ctx)))
 	if err != nil {
 		return nil, err
@@ -66,13 +111,14 @@ func New(ctx context.Context, clientId, clientSecret, baseUrl string) (*DataCent
 		return nil, err
 	}
 
-	// basic authentication
+	// basic authentication or bearerToken
 	dc := DataCenterClient{
 		httpClient:   cli,
 		baseEndpoint: strUrl,
-		Auth: &auth{
-			user:     clientId,
-			password: clientSecret,
+		auth: &auth{
+			user:        clientId,
+			password:    clientSecret,
+			bearerToken: clientToken,
 		},
 	}
 
