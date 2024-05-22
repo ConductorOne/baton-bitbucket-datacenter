@@ -41,7 +41,7 @@ func getConnector(ctx context.Context, cfg *config) (types.ConnectorServer, erro
 	l := ctxzap.Extract(ctx)
 	bitbucketClient := client.NewClient()
 	if cfg.BitbucketToken != "" {
-		bitbucketClient.WithBitbucketToken(cfg.BitbucketToken)
+		bitbucketClient.WithBearerToken(cfg.BitbucketToken)
 	}
 
 	if cfg.BitbucketUsername != "" && cfg.BitbucketPassword != "" {
