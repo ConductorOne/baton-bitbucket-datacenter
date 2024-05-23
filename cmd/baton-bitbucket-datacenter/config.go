@@ -11,9 +11,9 @@ import (
 // config defines the external configuration required for the connector to run.
 type config struct {
 	cli.BaseConfig    `mapstructure:",squash"` // Puts the base config options in the same place as the connector options
-	BitbucketUsername string                   `mapstructure:"bitbucketdc-username"`
-	BitbucketPassword string                   `mapstructure:"bitbucketdc-password"`
-	BitbucketBaseUrl  string                   `mapstructure:"bitbucketdc-baseurl"`
+	BitbucketUsername string                   `mapstructure:"bitbucketdc-username" description:"Username of administrator used to connect to the BitBucketDC API."`
+	BitbucketPassword string                   `mapstructure:"bitbucketdc-password" description:"Application password used to connect to the BitBucketDC API."`
+	BitbucketBaseUrl  string                   `mapstructure:"bitbucketdc-baseurl" description:"Bitbucket Data Center server. example http://localhost:7990." defaultValue:"http://localhost:7990"`
 	BitbucketToken    string                   `mapstructure:"bitbucketdc-token"`
 }
 
