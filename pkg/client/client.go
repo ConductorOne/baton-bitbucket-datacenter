@@ -651,7 +651,6 @@ func (d *DataCenterClient) GetUserRepositoryPermissions(ctx context.Context, sta
 		page           Page
 		sPage, nPage   = "0", "0"
 	)
-	// strUrl := fmt.Sprintf("%s/projects/%s/repos/%s/permissions/users", d.baseUrl, projectKey, repositorySlug)
 	endpointUrl := fmt.Sprintf("%s/%s/%s/repos/%s/%s", d.baseUrl,
 		allProjectsEndpoint,
 		projectKey,
@@ -722,7 +721,6 @@ func (d *DataCenterClient) GetUserProjectsPermissions(ctx context.Context, start
 		page           Page
 		sPage, nPage   = "0", "0"
 	)
-	// strUrl := fmt.Sprintf("%s/projects/%s/permissions/users", d.baseUrl, projectKey)
 	endpointUrl := fmt.Sprintf("%s/%s/%s/%s", d.baseUrl,
 		allProjectsEndpoint,
 		projectKey,
@@ -773,7 +771,6 @@ func (d *DataCenterClient) GetGroupProjectsPermissions(ctx context.Context, star
 		page           Page
 		sPage, nPage   = "0", "0"
 	)
-	// strUrl := fmt.Sprintf("%s/projects/%s/permissions/groups", d.baseUrl, projectKey)
 	strUrl := fmt.Sprintf("%s/%s/%s/%s", d.baseUrl,
 		allProjectsEndpoint,
 		projectKey,
@@ -860,7 +857,6 @@ func (d *DataCenterClient) GetGroupRepositoryPermissions(ctx context.Context, st
 		page           Page
 		sPage, nPage   = "0", "0"
 	)
-	// strUrl := fmt.Sprintf("%s/projects/%s/repos/%s/permissions/groups", d.baseUrl, projectKey, repositorySlug)
 	strUrl := fmt.Sprintf("%s/%s/%s/repos/%s/%s", d.baseUrl,
 		allProjectsEndpoint,
 		projectKey,
@@ -936,8 +932,6 @@ func (d *DataCenterClient) AddUserToGroups(ctx context.Context, groupName, userN
 		}
 		payload = []byte(fmt.Sprintf(`{"groups": ["%s"], "user": "%s"}`, groupName, userName))
 	)
-
-	// strUrl, err := url.JoinPath(d.baseUrl, "admin/users/add-groups")
 	endpointUrl, err := url.JoinPath(d.baseUrl, addUserToGroupsEndpoint)
 	if err != nil {
 		return err
@@ -988,8 +982,6 @@ func (d *DataCenterClient) RemoveUserFromGroup(ctx context.Context, userName, gr
 		}
 		payload = []byte(fmt.Sprintf(`{"context": "%s", "itemName": "%s"}`, userName, groupName))
 	)
-
-	// strUrl, err := url.JoinPath(d.baseUrl, "admin/users/remove-group")
 	endpointUrl, err := url.JoinPath(d.baseUrl, removeUserFromGroupEndpoint)
 	if err != nil {
 		return err
@@ -1074,7 +1066,6 @@ func (d *DataCenterClient) UpdateUserRepositoryPermission(ctx context.Context, p
 // Update group repository permission
 // https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-permission-management/#api-api-latest-projects-projectkey-repos-repositoryslug-permissions-groups-put
 func (d *DataCenterClient) UpdateGroupRepositoryPermission(ctx context.Context, projectKey, repositorySlug, groupName, permission string) error {
-	// strUrl := fmt.Sprintf("%s/projects/%s/repos/%s/permissions/groups?name=%s&permission=%s",
 	endpointUrl := fmt.Sprintf("%s/%s/%s/repos/%s/%s?name=%s&permission=%s",
 		d.baseUrl,
 		allProjectsEndpoint,
@@ -1116,7 +1107,6 @@ func (d *DataCenterClient) UpdateGroupRepositoryPermission(ctx context.Context, 
 // Revoke group repository permission
 // https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-permission-management/#api-api-latest-projects-projectkey-repos-repositoryslug-permissions-groups-delete
 func (d *DataCenterClient) RevokeGroupRepositoryPermission(ctx context.Context, projectKey, repositorySlug, groupName string) error {
-	// strUrl := fmt.Sprintf("%s/%s/%s/repos/%s/permissions/groups?name=%s",
 	endpointUrl := fmt.Sprintf("%s/%s/%s/repos/%s/%s?name=%s",
 		d.baseUrl,
 		allProjectsEndpoint,
@@ -1157,7 +1147,6 @@ func (d *DataCenterClient) RevokeGroupRepositoryPermission(ctx context.Context, 
 // Revoke user repository permission
 // https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-permission-management/#api-api-latest-projects-projectkey-repos-repositoryslug-permissions-users-delete
 func (d *DataCenterClient) RevokeUserRepositoryPermission(ctx context.Context, projectKey, repositorySlug, userName string) error {
-	// strUrl := fmt.Sprintf("%s/projects/%s/repos/%s/permissions/users?name=%s",
 	endpointUrl := fmt.Sprintf("%s/%s/%s/repos/%s/%s?name=%s",
 		d.baseUrl,
 		allProjectsEndpoint,
@@ -1198,7 +1187,6 @@ func (d *DataCenterClient) RevokeUserRepositoryPermission(ctx context.Context, p
 // Revoke user project permission
 // https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-project/#api-api-latest-projects-projectkey-permissions-users-delete
 func (d *DataCenterClient) RevokeUserProjectPermission(ctx context.Context, projectKey, userName string) error {
-	// strUrl := fmt.Sprintf("%s/projects/%s/permissions/users?name=%s",
 	endpointUrl := fmt.Sprintf("%s/%s/%s/%s?name=%s",
 		d.baseUrl,
 		allProjectsEndpoint,
@@ -1238,7 +1226,6 @@ func (d *DataCenterClient) RevokeUserProjectPermission(ctx context.Context, proj
 // Revoke group project permission.
 // https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-project/#api-api-latest-projects-projectkey-permissions-groups-delete
 func (d *DataCenterClient) RevokeGroupProjectPermission(ctx context.Context, projectKey, groupName string) error {
-	// strUrl := fmt.Sprintf("%s/projects/%s/permissions/groups?name=%s",
 	endpointUrl := fmt.Sprintf("%s/%s/%s/%s?name=%s",
 		d.baseUrl,
 		allProjectsEndpoint,
@@ -1278,7 +1265,6 @@ func (d *DataCenterClient) RevokeGroupProjectPermission(ctx context.Context, pro
 // Update user project permission. Available project permissions are: PROJECT_READ, PROJECT_WRITE, PROJECT_ADMIN
 // https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-project/#api-api-latest-projects-projectkey-permissions-users-put
 func (d *DataCenterClient) UpdateUserProjectPermission(ctx context.Context, projectKey, userName, permission string) error {
-	// strUrl := fmt.Sprintf("%s/projects/%s/permissions/users?name=%s&permission=%s",
 	endpointUrl := fmt.Sprintf("%s/%s/%s/%s?name=%s&permission=%s",
 		d.baseUrl,
 		allProjectsEndpoint,
@@ -1319,7 +1305,6 @@ func (d *DataCenterClient) UpdateUserProjectPermission(ctx context.Context, proj
 // Update group project permission. Available project permissions are: PROJECT_READ, PROJECT_WRITE, PROJECT_ADMIN
 // https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-project/#api-api-latest-projects-projectkey-permissions-groups-put
 func (d *DataCenterClient) UpdateGroupProjectPermission(ctx context.Context, projectKey, groupName, permission string) error {
-	// strUrl := fmt.Sprintf("%s/projects/%s/permissions/groups?name=%s&permission=%s",
 	endpointUrl := fmt.Sprintf("%s/%s/%s/%s?name=%s&permission=%s",
 		d.baseUrl,
 		allProjectsEndpoint,
