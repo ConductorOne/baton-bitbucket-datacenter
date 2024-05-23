@@ -99,7 +99,7 @@ func WithSetBearerAuthHeader(token string) uhttp.RequestOption {
 	return uhttp.WithHeader("Authorization", "Bearer "+token)
 }
 
-func WithSetAuthHeader(username, password, token string) uhttp.RequestOption {
+func WithAuthHeader(username, password, token string) uhttp.RequestOption {
 	if token != "" {
 		return WithSetBearerAuthHeader(token)
 	}
@@ -148,11 +148,6 @@ func New(ctx context.Context, baseUrl string, bitbucketClient *DataCenterClient)
 		return nil, fmt.Errorf("the url : %s is not valid", baseUrl)
 	}
 
-	// baseUrl, err = url.JoinPath(baseUrl, "rest/api/latest")
-	// if err != nil {
-	// 	return nil, err
-	// }
-
 	// basic authentication or bearerToken
 	dc := DataCenterClient{
 		httpClient: cli,
@@ -195,10 +190,8 @@ func (d *DataCenterClient) GetUsers(ctx context.Context, startPage, limit string
 		http.MethodGet,
 		uri,
 		uhttp.WithAcceptJSONHeader(),
-		WithSetAuthHeader(d.getUser(),
-			d.getPWD(),
-			d.getToken(),
-		),
+		WithSetBasicAuthHeader(d.getUser(), d.getPWD()),
+		WithAuthorizationBearerHeader(d.getToken()),
 	)
 	if err != nil {
 		return nil, Page{}, err
@@ -265,7 +258,8 @@ func (d *DataCenterClient) GetProjects(ctx context.Context, startPage, limit str
 		http.MethodGet,
 		uri,
 		uhttp.WithAcceptJSONHeader(),
-		WithSetAuthHeader(d.getUser(), d.getPWD(), d.getToken()),
+		WithSetBasicAuthHeader(d.getUser(), d.getPWD()),
+		WithAuthorizationBearerHeader(d.getToken()),
 	)
 	if err != nil {
 		return nil, Page{}, err
@@ -329,7 +323,8 @@ func (d *DataCenterClient) GetRepos(ctx context.Context, startPage, limit string
 		http.MethodGet,
 		uri,
 		uhttp.WithAcceptJSONHeader(),
-		WithSetAuthHeader(d.getUser(), d.getPWD(), d.getToken()),
+		WithSetBasicAuthHeader(d.getUser(), d.getPWD()),
+		WithAuthorizationBearerHeader(d.getToken()),
 	)
 	if err != nil {
 		return nil, Page{}, err
@@ -396,9 +391,8 @@ func (d *DataCenterClient) GetGroups(ctx context.Context, startPage, limit strin
 		http.MethodGet,
 		uri,
 		uhttp.WithAcceptJSONHeader(),
-		WithSetAuthHeader(d.getUser(),
-			d.getPWD(),
-			d.getToken()),
+		WithSetBasicAuthHeader(d.getUser(), d.getPWD()),
+		WithAuthorizationBearerHeader(d.getToken()),
 	)
 	if err != nil {
 		return nil, Page{}, err
@@ -461,7 +455,8 @@ func (d *DataCenterClient) GetGroupMembers(ctx context.Context, startPage, limit
 		http.MethodGet,
 		uri,
 		uhttp.WithAcceptJSONHeader(),
-		WithSetAuthHeader(d.getUser(), d.getPWD(), d.getToken()),
+		WithSetBasicAuthHeader(d.getUser(), d.getPWD()),
+		WithAuthorizationBearerHeader(d.getToken()),
 	)
 	if err != nil {
 		return nil, Page{}, err
@@ -543,7 +538,8 @@ func (d *DataCenterClient) GetGlobalUserPermissions(ctx context.Context, startPa
 		http.MethodGet,
 		uri,
 		uhttp.WithAcceptJSONHeader(),
-		WithSetAuthHeader(d.getUser(), d.getPWD(), d.getToken()),
+		WithSetBasicAuthHeader(d.getUser(), d.getPWD()),
+		WithAuthorizationBearerHeader(d.getToken()),
 	)
 	if err != nil {
 		return nil, Page{}, err
@@ -593,7 +589,8 @@ func (d *DataCenterClient) GetGlobalGroupPermissions(ctx context.Context, startP
 		http.MethodGet,
 		uri,
 		uhttp.WithAcceptJSONHeader(),
-		WithSetAuthHeader(d.getUser(), d.getPWD(), d.getToken()),
+		WithSetBasicAuthHeader(d.getUser(), d.getPWD()),
+		WithAuthorizationBearerHeader(d.getToken()),
 	)
 	if err != nil {
 		return nil, Page{}, err
@@ -682,10 +679,8 @@ func (d *DataCenterClient) GetUserRepositoryPermissions(ctx context.Context, sta
 		http.MethodGet,
 		uri,
 		uhttp.WithAcceptJSONHeader(),
-		WithSetAuthHeader(d.getUser(),
-			d.getPWD(),
-			d.getToken(),
-		),
+		WithSetBasicAuthHeader(d.getUser(), d.getPWD()),
+		WithAuthorizationBearerHeader(d.getToken()),
 	)
 	if err != nil {
 		return nil, Page{}, err
@@ -755,10 +750,8 @@ func (d *DataCenterClient) GetUserProjectsPermissions(ctx context.Context, start
 		http.MethodGet,
 		uri,
 		uhttp.WithAcceptJSONHeader(),
-		WithSetAuthHeader(d.getUser(),
-			d.getPWD(),
-			d.getToken(),
-		),
+		WithSetBasicAuthHeader(d.getUser(), d.getPWD()),
+		WithAuthorizationBearerHeader(d.getToken()),
 	)
 	if err != nil {
 		return nil, Page{}, err
@@ -809,9 +802,8 @@ func (d *DataCenterClient) GetGroupProjectsPermissions(ctx context.Context, star
 		http.MethodGet,
 		uri,
 		uhttp.WithAcceptJSONHeader(),
-		WithSetAuthHeader(d.getUser(),
-			d.getPWD(),
-			d.getToken()),
+		WithSetBasicAuthHeader(d.getUser(), d.getPWD()),
+		WithAuthorizationBearerHeader(d.getToken()),
 	)
 	if err != nil {
 		return nil, Page{}, err
@@ -899,10 +891,8 @@ func (d *DataCenterClient) GetGroupRepositoryPermissions(ctx context.Context, st
 		http.MethodGet,
 		uri,
 		uhttp.WithAcceptJSONHeader(),
-		WithSetAuthHeader(d.getUser(),
-			d.getPWD(),
-			d.getToken(),
-		),
+		WithSetBasicAuthHeader(d.getUser(), d.getPWD()),
+		WithAuthorizationBearerHeader(d.getToken()),
 	)
 	if err != nil {
 		return nil, Page{}, err
@@ -978,7 +968,8 @@ func (d *DataCenterClient) AddUserToGroups(ctx context.Context, groupName, userN
 		http.MethodPost,
 		uri,
 		uhttp.WithAcceptJSONHeader(),
-		WithSetAuthHeader(d.getUser(), d.getPWD(), d.getToken()),
+		WithSetBasicAuthHeader(d.getUser(), d.getPWD()),
+		WithAuthorizationBearerHeader(d.getToken()),
 		uhttp.WithJSONBody(body),
 	)
 	if err != nil {
@@ -1030,10 +1021,8 @@ func (d *DataCenterClient) RemoveUserFromGroup(ctx context.Context, userName, gr
 		http.MethodPost,
 		uri,
 		uhttp.WithAcceptJSONHeader(),
-		WithSetAuthHeader(d.getUser(),
-			d.getPWD(),
-			d.getToken(),
-		),
+		WithSetBasicAuthHeader(d.getUser(), d.getPWD()),
+		WithAuthorizationBearerHeader(d.getToken()),
 		uhttp.WithJSONBody(body),
 	)
 	if err != nil {
@@ -1075,7 +1064,8 @@ func (d *DataCenterClient) UpdateUserRepositoryPermission(ctx context.Context, p
 		http.MethodPut,
 		uri,
 		uhttp.WithAcceptJSONHeader(),
-		WithSetAuthHeader(d.getUser(), d.getPWD(), d.getToken()),
+		WithSetBasicAuthHeader(d.getUser(), d.getPWD()),
+		WithAuthorizationBearerHeader(d.getToken()),
 	)
 	if err != nil {
 		return err
@@ -1117,10 +1107,8 @@ func (d *DataCenterClient) UpdateGroupRepositoryPermission(ctx context.Context, 
 		http.MethodPut,
 		uri,
 		uhttp.WithAcceptJSONHeader(),
-		WithSetAuthHeader(d.getUser(),
-			d.getPWD(),
-			d.getToken(),
-		),
+		WithSetBasicAuthHeader(d.getUser(), d.getPWD()),
+		WithAuthorizationBearerHeader(d.getToken()),
 	)
 	if err != nil {
 		return err
@@ -1161,7 +1149,8 @@ func (d *DataCenterClient) RevokeGroupRepositoryPermission(ctx context.Context, 
 		http.MethodDelete,
 		uri,
 		uhttp.WithAcceptJSONHeader(),
-		WithSetAuthHeader(d.getUser(), d.getPWD(), d.getToken()),
+		WithSetBasicAuthHeader(d.getUser(), d.getPWD()),
+		WithAuthorizationBearerHeader(d.getToken()),
 	)
 	if err != nil {
 		return err
@@ -1202,10 +1191,8 @@ func (d *DataCenterClient) RevokeUserRepositoryPermission(ctx context.Context, p
 		http.MethodDelete,
 		uri,
 		uhttp.WithAcceptJSONHeader(),
-		WithSetAuthHeader(d.getUser(),
-			d.getPWD(),
-			d.getToken(),
-		),
+		WithSetBasicAuthHeader(d.getUser(), d.getPWD()),
+		WithAuthorizationBearerHeader(d.getToken()),
 	)
 	if err != nil {
 		return err
@@ -1245,7 +1232,8 @@ func (d *DataCenterClient) RevokeUserProjectPermission(ctx context.Context, proj
 		http.MethodDelete,
 		uri,
 		uhttp.WithAcceptJSONHeader(),
-		WithSetAuthHeader(d.getUser(), d.getPWD(), d.getToken()),
+		WithSetBasicAuthHeader(d.getUser(), d.getPWD()),
+		WithAuthorizationBearerHeader(d.getToken()),
 	)
 	if err != nil {
 		return err
@@ -1285,7 +1273,8 @@ func (d *DataCenterClient) RevokeGroupProjectPermission(ctx context.Context, pro
 		http.MethodDelete,
 		uri,
 		uhttp.WithAcceptJSONHeader(),
-		WithSetAuthHeader(d.getUser(), d.getPWD(), d.getToken()),
+		WithSetBasicAuthHeader(d.getUser(), d.getPWD()),
+		WithAuthorizationBearerHeader(d.getToken()),
 	)
 	if err != nil {
 		return err
@@ -1326,10 +1315,8 @@ func (d *DataCenterClient) UpdateUserProjectPermission(ctx context.Context, proj
 		http.MethodPut,
 		uri,
 		uhttp.WithAcceptJSONHeader(),
-		WithSetAuthHeader(d.getUser(),
-			d.getPWD(),
-			d.getToken(),
-		),
+		WithSetBasicAuthHeader(d.getUser(), d.getPWD()),
+		WithAuthorizationBearerHeader(d.getToken()),
 	)
 	if err != nil {
 		return err
@@ -1370,10 +1357,8 @@ func (d *DataCenterClient) UpdateGroupProjectPermission(ctx context.Context, pro
 		http.MethodPut,
 		uri,
 		uhttp.WithAcceptJSONHeader(),
-		WithSetAuthHeader(d.getUser(),
-			d.getPWD(),
-			d.getToken(),
-		),
+		WithSetBasicAuthHeader(d.getUser(), d.getPWD()),
+		WithAuthorizationBearerHeader(d.getToken()),
 	)
 	if err != nil {
 		return err
