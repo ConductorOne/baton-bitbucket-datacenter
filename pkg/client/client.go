@@ -58,7 +58,7 @@ type auth struct {
 func NewClient() *DataCenterClient {
 	return &DataCenterClient{
 		httpClient: &uhttp.BaseHttpClient{},
-		baseUrl:    "",
+		baseUrl:    "http://localhost:7990",
 		auth: &auth{
 			user:        "",
 			password:    "",

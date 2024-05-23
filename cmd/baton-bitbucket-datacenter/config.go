@@ -40,6 +40,6 @@ func validateConfig(ctx context.Context, cfg *config) error {
 func cmdFlags(cmd *cobra.Command) {
 	cmd.PersistentFlags().String("bitbucketdc-username", "", "Username of administrator used to connect to the BitBucket(dc) API. ($BATON_BITBUCKETDC_USERNAME)")
 	cmd.PersistentFlags().String("bitbucketdc-password", "", "Application password used to connect to the BitBucket(dc) API. ($BATON_BITBUCKETDC_PASSWORD)")
-	cmd.PersistentFlags().String("bitbucketdc-baseurl", "", "Bitbucket Data Center server. example http://localhost:7990. ($BATON_BITBUCKETDC_BASEURL)")
+	cmd.PersistentFlags().String("bitbucketdc-baseurl", "", "Bitbucket Data Center server. example http://localhost:7990. defaultValue: http://localhost:7990 ($BATON_BITBUCKETDC_BASEURL)")
 	cmd.PersistentFlags().String("bitbucketdc-token", "", "HTTP access tokens in Bitbucket Data Center. ($BATON_BITBUCKETDC_TOKEN)")
 }
