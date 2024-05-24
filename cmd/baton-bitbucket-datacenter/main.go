@@ -11,6 +11,7 @@ import (
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
 	"go.uber.org/zap"
 
+	"github.com/conductorone/baton-bitbucket-datacenter/pkg/client"
 	"github.com/conductorone/baton-bitbucket-datacenter/pkg/connector"
 )
 
@@ -38,11 +39,16 @@ func main() {
 
 func getConnector(ctx context.Context, cfg *config) (types.ConnectorServer, error) {
 	l := ctxzap.Extract(ctx)
-	cb, err := connector.New(ctx,
-		cfg.BitbucketUsername,
-		cfg.BitbucketPassword,
-		cfg.BitbucketBaseUrl,
-	)
+	bitbucketClient := client.NewClient()
+	if cfg.BitbucketToken != "" {
+		bitbucketClient.WithBearerToken(cfg.BitbucketToken)
+	}
+
+	if cfg.BitbucketUsername != "" && cfg.BitbucketPassword != "" {
+		bitbucketClient.WithUser(cfg.BitbucketUsername).WithPassword(cfg.BitbucketPassword)
+	}
+
+	cb, err := connector.New(ctx, cfg.BitbucketBaseUrl, bitbucketClient)
 	if err != nil {
 		l.Error("error creating connector", zap.Error(err))
 		return nil, err

@@ -45,19 +45,16 @@ func (c *Connector) Validate(ctx context.Context) (annotations.Annotations, erro
 }
 
 // New returns a new instance of the connector.
-func New(ctx context.Context, clientId, clientSecret, baseUrl string) (*Connector, error) {
-	var (
-		dc  *client.DataCenterClient
-		err error
-	)
-	if clientId != "" && clientSecret != "" {
-		dc, err = client.New(ctx, clientId, clientSecret, baseUrl)
+func New(ctx context.Context, baseUrl string, bitbucketClient *client.DataCenterClient) (*Connector, error) {
+	var err error
+	if bitbucketClient.CheckCredentials() {
+		bitbucketClient, err = client.New(ctx, baseUrl, bitbucketClient)
 		if err != nil {
 			return nil, err
 		}
 	}
 
 	return &Connector{
-		client: dc,
+		client: bitbucketClient,
 	}, nil
 }
