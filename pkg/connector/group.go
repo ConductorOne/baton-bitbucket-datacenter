@@ -3,9 +3,9 @@ package connector
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"slices"
 	"strconv"
-	"strings"
 
 	"github.com/conductorone/baton-bitbucket-datacenter/pkg/client"
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
@@ -21,8 +21,6 @@ type groupBuilder struct {
 	resourceType *v2.ResourceType
 	client       *client.DataCenterClient
 }
-
-const Unauthenticated = "401"
 
 func (g *groupBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
 	return g.resourceType
@@ -100,13 +98,14 @@ func (g *groupBuilder) Entitlements(ctx context.Context, resource *v2.Resource, 
 		}
 	}
 
-	permissions, nextPageToken, err := g.client.ListGlobalUserPermissions(ctx, client.PageOptions{
+	permissions, nextPageToken, bitbucketError := g.client.ListGlobalUserPermissions(ctx, client.PageOptions{
 		PerPage: ITEMSPERPAGE,
 		Page:    pageToken,
 	})
-	if err != nil {
-		if !strings.Contains(err.Error(), Unauthenticated) {
-			return nil, "", nil, fmt.Errorf("%s", err.Error())
+
+	if bitbucketError.Error != nil {
+		if bitbucketError.ErrorCode != http.StatusUnauthorized {
+			return nil, "", nil, fmt.Errorf("%s", bitbucketError.Error)
 		}
 
 		permissions = []client.UsersPermissions{{Permission: "LICENSED_USER"}}
@@ -156,18 +155,18 @@ func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 	}
 
 	// Get user permissions
-	userPermissions, err := listGlobalUserPermissions(ctx, g.client)
-	if err != nil {
-		if !strings.Contains(err.Error(), Unauthenticated) {
-			return nil, "", nil, fmt.Errorf("%s", err.Error())
+	userPermissions, bitbucketError := listGlobalUserPermissions(ctx, g.client)
+	if bitbucketError.Error != nil {
+		if (bitbucketError.ErrorCode) != http.StatusUnauthorized {
+			return nil, "", nil, fmt.Errorf("%s", bitbucketError.Error)
 		}
 	}
 
 	// Get group permissions
-	groupPermissions, err := listGlobalGroupPermissions(ctx, g.client)
-	if err != nil {
-		if !strings.Contains(err.Error(), Unauthenticated) {
-			return nil, "", nil, fmt.Errorf("%s", err.Error())
+	groupPermissions, bitbucketError := listGlobalGroupPermissions(ctx, g.client)
+	if bitbucketError.Error != nil {
+		if bitbucketError.ErrorCode != http.StatusUnauthorized {
+			return nil, "", nil, fmt.Errorf("%s", bitbucketError.Error)
 		}
 	}
 

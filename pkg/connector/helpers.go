@@ -230,18 +230,19 @@ func ParseEntitlementID(id string) (*v2.ResourceId, []string, error) {
 	return resourceId, parts, nil
 }
 
-func listGlobalUserPermissions(ctx context.Context, cli *client.DataCenterClient) ([]client.UsersPermissions, error) {
+func listGlobalUserPermissions(ctx context.Context, cli *client.DataCenterClient) ([]client.UsersPermissions, client.BitbucketError) {
 	var (
 		page           int
 		lstPermissions []client.UsersPermissions
+		err            error
 	)
 	for {
-		permissions, nextPageToken, err := cli.ListGlobalUserPermissions(ctx, client.PageOptions{
+		permissions, nextPageToken, errBitbucket := cli.ListGlobalUserPermissions(ctx, client.PageOptions{
 			PerPage: ITEMSPERPAGE,
 			Page:    page,
 		})
-		if err != nil {
-			return nil, err
+		if errBitbucket.Error != nil {
+			return nil, errBitbucket
 		}
 
 		lstPermissions = append(lstPermissions, permissions...)
@@ -251,25 +252,33 @@ func listGlobalUserPermissions(ctx context.Context, cli *client.DataCenterClient
 
 		page, err = strconv.Atoi(nextPageToken)
 		if err != nil {
-			return nil, err
+			return nil, client.BitbucketError{
+				Error:            err,
+				ErrorMessage:     err.Error(),
+				ErrorDescription: err.Error(),
+				ErrorCode:        0,
+			}
 		}
 	}
 
-	return lstPermissions, nil
+	return lstPermissions, client.BitbucketError{
+		Error: nil,
+	}
 }
 
-func listGlobalGroupPermissions(ctx context.Context, cli *client.DataCenterClient) ([]client.GroupsPermissions, error) {
+func listGlobalGroupPermissions(ctx context.Context, cli *client.DataCenterClient) ([]client.GroupsPermissions, client.BitbucketError) {
 	var (
 		page           int
 		lstPermissions []client.GroupsPermissions
+		err            error
 	)
 	for {
-		permissions, nextPageToken, err := cli.ListGlobalGroupPermissions(ctx, client.PageOptions{
+		permissions, nextPageToken, errBitbucket := cli.ListGlobalGroupPermissions(ctx, client.PageOptions{
 			PerPage: ITEMSPERPAGE,
 			Page:    page,
 		})
-		if err != nil {
-			return nil, err
+		if errBitbucket.Error != nil {
+			return nil, errBitbucket
 		}
 
 		lstPermissions = append(lstPermissions, permissions...)
@@ -279,11 +288,18 @@ func listGlobalGroupPermissions(ctx context.Context, cli *client.DataCenterClien
 
 		page, err = strconv.Atoi(nextPageToken)
 		if err != nil {
-			return nil, err
+			return nil, client.BitbucketError{
+				Error:            err,
+				ErrorMessage:     err.Error(),
+				ErrorDescription: err.Error(),
+				ErrorCode:        0,
+			}
 		}
 	}
 
-	return lstPermissions, nil
+	return lstPermissions, client.BitbucketError{
+		Error: nil,
+	}
 }
 
 func listGroupMembers(ctx context.Context, cli *client.DataCenterClient, groupName string) ([]client.Members, error) {
