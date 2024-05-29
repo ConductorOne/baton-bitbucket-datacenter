@@ -105,7 +105,7 @@ func (g *groupBuilder) Entitlements(ctx context.Context, resource *v2.Resource, 
 
 	if bitbucketError.Error != nil {
 		if bitbucketError.ErrorCode != http.StatusUnauthorized {
-			return nil, "", nil, fmt.Errorf("%s", bitbucketError.Error)
+			return nil, "", nil, fmt.Errorf("%s", bitbucketError.Error.Error())
 		}
 
 		permissions = []client.UsersPermissions{{Permission: "LICENSED_USER"}}
@@ -158,7 +158,7 @@ func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 	userPermissions, bitbucketError := listGlobalUserPermissions(ctx, g.client)
 	if bitbucketError.Error != nil {
 		if (bitbucketError.ErrorCode) != http.StatusUnauthorized {
-			return nil, "", nil, fmt.Errorf("%s", bitbucketError.Error)
+			return nil, "", nil, fmt.Errorf("%s", bitbucketError.Error.Error())
 		}
 	}
 
@@ -166,7 +166,7 @@ func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 	groupPermissions, bitbucketError := listGlobalGroupPermissions(ctx, g.client)
 	if bitbucketError.Error != nil {
 		if bitbucketError.ErrorCode != http.StatusUnauthorized {
-			return nil, "", nil, fmt.Errorf("%s", bitbucketError.Error)
+			return nil, "", nil, fmt.Errorf("%s", bitbucketError.Error.Error())
 		}
 	}
 
