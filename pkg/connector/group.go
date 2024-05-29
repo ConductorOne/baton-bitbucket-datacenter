@@ -91,7 +91,6 @@ func (g *groupBuilder) Entitlements(ctx context.Context, resource *v2.Resource, 
 		nextPageToken string
 		err           error
 		rv            []*v2.Entitlement
-		permissions   = []client.UsersPermissions{}
 	)
 
 	if pToken.Token != "" {
@@ -101,7 +100,7 @@ func (g *groupBuilder) Entitlements(ctx context.Context, resource *v2.Resource, 
 		}
 	}
 
-	permissions, nextPageToken, err = g.client.ListGlobalUserPermissions(ctx, client.PageOptions{
+	permissions, nextPageToken, err := g.client.ListGlobalUserPermissions(ctx, client.PageOptions{
 		PerPage: ITEMSPERPAGE,
 		Page:    pageToken,
 	})
