@@ -120,11 +120,23 @@ func (d *DataCenterClient) getPWD() string {
 }
 
 func (d *DataCenterClient) CheckCredentials() bool {
-	if (d.getUser() != "" && d.getPWD() != "") || d.getToken() != "" {
+	if d.IsBasicAuthentication() || d.getToken() != "" {
 		return true
 	}
 
 	return false
+}
+
+func (d *DataCenterClient) IsBasicAuthentication() bool {
+	if d.getUser() != "" && d.getPWD() != "" {
+		return true
+	}
+
+	return false
+}
+
+func (d *DataCenterClient) IsTokenAuthentication() bool {
+	return d.getPWD() != ""
 }
 
 func isValidUrl(baseUrl string) bool {
@@ -615,7 +627,7 @@ func (d *DataCenterClient) ListGlobalUserPermissions(ctx context.Context, opts P
 		strconv.Itoa(opts.PerPage),
 	)
 	if err != nil {
-		return usersPermissions, "", err
+		return []UsersPermissions{}, "", err
 	}
 
 	if page.HasNext() {

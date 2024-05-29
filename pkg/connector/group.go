@@ -84,9 +84,11 @@ func (g *groupBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId
 // Entitlements always returns an empty slice for users.
 func (g *groupBuilder) Entitlements(ctx context.Context, resource *v2.Resource, pToken *pagination.Token) ([]*v2.Entitlement, string, annotations.Annotations, error) {
 	var (
-		pageToken int
-		err       error
-		rv        []*v2.Entitlement
+		pageToken     int
+		nextPageToken string
+		err           error
+		rv            []*v2.Entitlement
+		permissions   = []client.UsersPermissions{}
 	)
 
 	if pToken.Token != "" {
@@ -96,12 +98,18 @@ func (g *groupBuilder) Entitlements(ctx context.Context, resource *v2.Resource, 
 		}
 	}
 
-	permissions, nextPageToken, err := g.client.ListGlobalUserPermissions(ctx, client.PageOptions{
-		PerPage: ITEMSPERPAGE,
-		Page:    pageToken,
-	})
-	if err != nil {
-		return nil, "", nil, err
+	if g.client.IsTokenAuthentication() {
+		permissions = []client.UsersPermissions{{Permission: "Member"}}
+	}
+
+	if g.client.IsBasicAuthentication() {
+		permissions, nextPageToken, err = g.client.ListGlobalUserPermissions(ctx, client.PageOptions{
+			PerPage: ITEMSPERPAGE,
+			Page:    pageToken,
+		})
+		if err != nil {
+			return nil, "", nil, err
+		}
 	}
 
 	// create entitlements for each project role (read, write, create, admin)
