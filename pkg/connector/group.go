@@ -156,18 +156,14 @@ func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 
 	// Get user permissions
 	userPermissions, bitbucketError := listGlobalUserPermissions(ctx, g.client)
-	if bitbucketError.Error != nil {
-		if (bitbucketError.ErrorCode) != http.StatusUnauthorized {
-			return nil, "", nil, fmt.Errorf("%s", bitbucketError.Error.Error())
-		}
+	if bitbucketError.Error != nil && bitbucketError.ErrorCode != http.StatusUnauthorized {
+		return nil, "", nil, fmt.Errorf("%s", bitbucketError.Error.Error())
 	}
 
 	// Get group permissions
 	groupPermissions, bitbucketError := listGlobalGroupPermissions(ctx, g.client)
-	if bitbucketError.Error != nil {
-		if bitbucketError.ErrorCode != http.StatusUnauthorized {
-			return nil, "", nil, fmt.Errorf("%s", bitbucketError.Error.Error())
-		}
+	if bitbucketError.Error != nil && bitbucketError.ErrorCode != http.StatusUnauthorized {
+		return nil, "", nil, fmt.Errorf("%s", bitbucketError.Error.Error())
 	}
 
 	groupPos := slices.IndexFunc(groupPermissions, func(c client.GroupsPermissions) bool {
