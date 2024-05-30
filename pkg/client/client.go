@@ -542,7 +542,7 @@ func (d *DataCenterClient) GetGlobalUserPermissions(ctx context.Context, startPa
 	)
 	endpointUrl, err := url.JoinPath(d.baseUrl, allUsersWithGlobalPermissionEndpoint)
 	if err != nil {
-		return nil, page, err
+		return nil, Page{}, err
 	}
 
 	uri, err := url.Parse(endpointUrl)
