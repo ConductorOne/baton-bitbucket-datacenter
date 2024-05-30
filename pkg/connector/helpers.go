@@ -131,7 +131,7 @@ func repositoryResource(ctx context.Context, repository *client.Repos, parentRes
 	resource, err := rs.NewGroupResource(
 		repository.Name,
 		resourceTypeRepository,
-		fmt.Sprintf("%d:%s:%s", repository.ID, repository.Slug, repository.Project.Key),
+		repository.ID,
 		groupTraitOptions,
 		rs.WithParentResourceID(parentResourceID),
 	)
@@ -475,21 +475,6 @@ func newEntitlementID(resource *v2.Resource, permission string) string {
 	return fmt.Sprintf("%s:%s:%s", resource.Id.ResourceType, resource.Id.Resource, permission)
 }
 
-func NewPermissionEntitlement(resource *v2.Resource, name string, entitlementOptions ...ent.EntitlementOption) *v2.Entitlement {
-	entitlement := &v2.Entitlement{
-		Id:          newEntitlementID(resource, name),
-		DisplayName: name,
-		Slug:        name,
-		Purpose:     v2.Entitlement_PURPOSE_VALUE_PERMISSION,
-		Resource:    resource,
-	}
-	for _, entitlementOption := range entitlementOptions {
-		entitlementOption(entitlement)
-	}
-
-	return entitlement
-}
-
 // NewGrant returns a new grant for the given entitlement on the resource for the provided principal resource ID.
 func NewGrant(resource *v2.Resource, entitlementName string, principal grant.GrantPrincipal, grantOptions ...grant.GrantOption) *v2.Grant {
 	var resourceID *v2.ResourceId
@@ -540,4 +525,49 @@ func getProjectKey(ctx context.Context, p *projectBuilder, projectId int) (strin
 	}
 
 	return projects[projectPos].Key, nil
+}
+
+func listRepositories(ctx context.Context, cli *client.DataCenterClient) ([]client.Repos, error) {
+	var (
+		page     int
+		lstRepos []client.Repos
+	)
+	for {
+		repos, nextPageToken, err := cli.ListRepos(ctx, client.PageOptions{
+			PerPage: ITEMSPERPAGE,
+			Page:    page,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		lstRepos = append(lstRepos, repos...)
+		if nextPageToken == "" {
+			break
+		}
+
+		page, err = strconv.Atoi(nextPageToken)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return lstRepos, nil
+}
+
+func getRepositorySlug(ctx context.Context, r *repoBuilder, repoId int) (string, string, error) {
+	repos, err := listRepositories(ctx, r.client)
+	if err != nil {
+		return "", "", err
+	}
+
+	repoPos := slices.IndexFunc(repos, func(c client.Repos) bool {
+		return c.ID == repoId
+	})
+
+	if repoPos == -1 {
+		return "", "", fmt.Errorf("project key was not found")
+	}
+
+	return repos[repoPos].Project.Key, repos[repoPos].Slug, nil
 }

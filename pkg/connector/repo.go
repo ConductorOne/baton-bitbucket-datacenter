@@ -103,7 +103,7 @@ func (r *repoBuilder) Entitlements(_ context.Context, resource *v2.Resource, _ *
 			ent.WithDisplayName(fmt.Sprintf("%s Repository %s", resource.DisplayName, permission)),
 			ent.WithDescription(fmt.Sprintf("%s access to %s repository in Bitbucket DC", titleCase(permission), resource.DisplayName)),
 		}
-		rv = append(rv, NewPermissionEntitlement(
+		rv = append(rv, ent.NewPermissionEntitlement(
 			resource,
 			permission,
 			permissionOptions...,
@@ -115,13 +115,12 @@ func (r *repoBuilder) Entitlements(_ context.Context, resource *v2.Resource, _ *
 
 func (r *repoBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
 	var (
-		pageToken         int
-		err               error
-		rv                []*v2.Grant
-		projectKey        string
-		nextPageToken     string
-		usersPermissions  []client.UsersPermissions
-		groupsPermissions []client.GroupsPermissions
+		pageToken                                 int
+		err                                       error
+		rv                                        []*v2.Grant
+		projectKey, repositorySlug, nextPageToken string
+		usersPermissions                          []client.UsersPermissions
+		groupsPermissions                         []client.GroupsPermissions
 	)
 	_, bag, err := unmarshalSkipToken(pToken)
 	if err != nil {
@@ -145,18 +144,22 @@ func (r *repoBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken 
 		}
 	}
 
-	ent, err := ParseEntitlementIDV2(resource.Id.Resource)
+	repoId, err := strconv.Atoi(resource.Id.Resource)
 	if err != nil {
 		return nil, "", nil, err
 	}
 
-	projectKey = ent[repositoryProjectKey] // repository_project_key
+	projectKey, repositorySlug, err = getRepositorySlug(ctx, r, repoId)
+	if err != nil {
+		return nil, "", nil, err
+	}
+
 	switch bag.ResourceTypeID() {
 	case resourceTypeGroup.Id:
 		groupsPermissions, nextPageToken, err = r.client.ListGroupRepositoryPermissions(ctx, client.PageOptions{
 			PerPage: ITEMSPERPAGE,
 			Page:    pageToken,
-		}, projectKey, resource.DisplayName)
+		}, projectKey, repositorySlug)
 		if err != nil {
 			return nil, "", nil, err
 		}
@@ -181,7 +184,7 @@ func (r *repoBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken 
 		usersPermissions, nextPageToken, err = r.client.ListUserRepositoryPermissions(ctx, client.PageOptions{
 			PerPage: ITEMSPERPAGE,
 			Page:    pageToken,
-		}, projectKey, resource.DisplayName)
+		}, projectKey, repositorySlug)
 		if err != nil {
 			return nil, "", nil, err
 		}
@@ -223,12 +226,7 @@ func (r *repoBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken 
 }
 
 func (r *repoBuilder) Grant(ctx context.Context, principal *v2.Resource, entitlement *v2.Entitlement) (annotations.Annotations, error) {
-	var (
-		projectKey     string
-		repositorySlug string
-		permission     string
-	)
-
+	var projectKey, repositorySlug, permission string
 	l := ctxzap.Extract(ctx)
 	if principal.Id.ResourceType != resourceTypeUser.Id && principal.Id.ResourceType != resourceTypeGroup.Id {
 		l.Warn(
@@ -251,13 +249,16 @@ func (r *repoBuilder) Grant(ctx context.Context, principal *v2.Resource, entitle
 		return nil, fmt.Errorf("bitbucket(dc) connector: invalid permission type: %s", permissions[len(permissions)-1])
 	}
 
-	ent, err := ParseEntitlementIDV2(entitlement.Resource.Id.Resource)
+	repoId, err := strconv.Atoi(entitlement.Resource.Id.Resource)
 	if err != nil {
 		return nil, err
 	}
 
-	projectKey = ent[repositoryProjectKey]   // repository_project_key
-	repositorySlug = ent[repositoryFullName] // repository_full_name
+	projectKey, repositorySlug, err = getRepositorySlug(ctx, r, repoId)
+	if err != nil {
+		return nil, err
+	}
+
 	switch principal.Id.ResourceType {
 	case resourceTypeUser.Id:
 		userId, err := strconv.Atoi(principal.Id.Resource)
@@ -339,10 +340,7 @@ func (r *repoBuilder) Grant(ctx context.Context, principal *v2.Resource, entitle
 }
 
 func (r *repoBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.Annotations, error) {
-	var (
-		projectKey     string
-		repositorySlug string
-	)
+	var projectKey, repositorySlug string
 	l := ctxzap.Extract(ctx)
 	principal := grant.Principal
 	entitlement := grant.Entitlement
@@ -363,13 +361,16 @@ func (r *repoBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.
 		return nil, err
 	}
 
-	ent, err := ParseEntitlementIDV2(entitlement.Resource.Id.Resource)
+	repoId, err := strconv.Atoi(entitlement.Resource.Id.Resource)
 	if err != nil {
 		return nil, err
 	}
 
-	projectKey = ent[repositoryProjectKey]   // repository_project_key
-	repositorySlug = ent[repositoryFullName] // repository_full_name
+	projectKey, repositorySlug, err = getRepositorySlug(ctx, r, repoId)
+	if err != nil {
+		return nil, err
+	}
+
 	switch principal.Id.ResourceType {
 	case resourceTypeUser.Id:
 		userId, err := strconv.Atoi(principal.Id.Resource)

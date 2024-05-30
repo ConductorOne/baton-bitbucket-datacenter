@@ -113,13 +113,12 @@ func (p *projectBuilder) Entitlements(_ context.Context, resource *v2.Resource, 
 
 func (p *projectBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
 	var (
-		pageToken         int
-		err               error
-		rv                []*v2.Grant
-		projectKey        string
-		nextPageToken     string
-		usersPermissions  []client.UsersPermissions
-		groupsPermissions []client.GroupsPermissions
+		pageToken                 int
+		err                       error
+		rv                        []*v2.Grant
+		projectKey, nextPageToken string
+		usersPermissions          []client.UsersPermissions
+		groupsPermissions         []client.GroupsPermissions
 	)
 	_, bag, err := unmarshalSkipToken(pToken)
 	if err != nil {
@@ -327,10 +326,7 @@ func (p *projectBuilder) Grant(ctx context.Context, principal *v2.Resource, enti
 }
 
 func (p *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.Annotations, error) {
-	var (
-		projectKey, permission string
-		repositorySlug         string
-	)
+	var projectKey, repositorySlug, permission string
 	l := ctxzap.Extract(ctx)
 	principal := grant.Principal
 	entitlement := grant.Entitlement
