@@ -11,7 +11,6 @@ import (
 	"github.com/conductorone/baton-sdk/pkg/annotations"
 	"github.com/conductorone/baton-sdk/pkg/pagination"
 	ent "github.com/conductorone/baton-sdk/pkg/types/entitlement"
-	rs "github.com/conductorone/baton-sdk/pkg/types/resource"
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
 	"go.uber.org/zap"
 )
@@ -98,15 +97,15 @@ func (r *repoBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId,
 func (r *repoBuilder) Entitlements(_ context.Context, resource *v2.Resource, _ *pagination.Token) ([]*v2.Entitlement, string, annotations.Annotations, error) {
 	var rv []*v2.Entitlement
 	// create entitlements for each repository role (read, write, admin)
-	for _, role := range repositoryRoles {
+	for _, permission := range repositoryRoles {
 		permissionOptions := []ent.EntitlementOption{
 			ent.WithGrantableTo(resourceTypeUser, resourceTypeGroup),
-			ent.WithDisplayName(fmt.Sprintf("%s Repository %s", resource.DisplayName, role)),
-			ent.WithDescription(fmt.Sprintf("%s access to %s repository in Bitbucket DC", titleCase(role), resource.DisplayName)),
+			ent.WithDisplayName(fmt.Sprintf("%s Repository %s", resource.DisplayName, permission)),
+			ent.WithDescription(fmt.Sprintf("%s access to %s repository in Bitbucket DC", titleCase(permission), resource.DisplayName)),
 		}
 		rv = append(rv, NewPermissionEntitlement(
 			resource,
-			role,
+			permission,
 			permissionOptions...,
 		))
 	}
@@ -120,7 +119,6 @@ func (r *repoBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken 
 		err               error
 		rv                []*v2.Grant
 		projectKey        string
-		ok                bool
 		nextPageToken     string
 		usersPermissions  []client.UsersPermissions
 		groupsPermissions []client.GroupsPermissions
@@ -147,15 +145,12 @@ func (r *repoBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken 
 		}
 	}
 
-	groupTrait, err := rs.GetGroupTrait(resource)
+	ent, err := ParseEntitlementIDV2(resource.Id.Resource)
 	if err != nil {
 		return nil, "", nil, err
 	}
 
-	if projectKey, ok = rs.GetProfileStringValue(groupTrait.Profile, "repository_project_key"); !ok {
-		return nil, "", nil, fmt.Errorf("repository_project_key not found")
-	}
-
+	projectKey = ent[repositoryProjectKey] // repository_project_key
 	switch bag.ResourceTypeID() {
 	case resourceTypeGroup.Id:
 		groupsPermissions, nextPageToken, err = r.client.ListGroupRepositoryPermissions(ctx, client.PageOptions{

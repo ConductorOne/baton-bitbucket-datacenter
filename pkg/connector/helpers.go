@@ -105,7 +105,7 @@ func projectResource(ctx context.Context, project *client.Projects, parentResour
 	resource, err := rs.NewGroupResource(
 		project.Name,
 		resourceTypeProject,
-		project.ID,
+		fmt.Sprintf("%d:%s:%s", project.ID, project.Name, project.Key),
 		groupTraitOptions,
 		rs.WithParentResourceID(parentResourceID),
 	)

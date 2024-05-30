@@ -11,8 +11,6 @@ import (
 	"github.com/conductorone/baton-sdk/pkg/annotations"
 	"github.com/conductorone/baton-sdk/pkg/pagination"
 	ent "github.com/conductorone/baton-sdk/pkg/types/entitlement"
-	"github.com/conductorone/baton-sdk/pkg/types/grant"
-	rs "github.com/conductorone/baton-sdk/pkg/types/resource"
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
 	"go.uber.org/zap"
 )
@@ -102,7 +100,7 @@ func (p *projectBuilder) Entitlements(_ context.Context, resource *v2.Resource, 
 			ent.WithDescription(fmt.Sprintf("%s access to %s project in Bitbucket DC", titleCase(permission), resource.DisplayName)),
 		}
 
-		rv = append(rv, ent.NewPermissionEntitlement(
+		rv = append(rv, NewPermissionEntitlement(
 			resource,
 			permission,
 			permissionOptions...,
@@ -118,7 +116,6 @@ func (p *projectBuilder) Grants(ctx context.Context, resource *v2.Resource, pTok
 		err               error
 		rv                []*v2.Grant
 		projectKey        string
-		ok                bool
 		nextPageToken     string
 		usersPermissions  []client.UsersPermissions
 		groupsPermissions []client.GroupsPermissions
@@ -145,15 +142,12 @@ func (p *projectBuilder) Grants(ctx context.Context, resource *v2.Resource, pTok
 		}
 	}
 
-	groupTrait, err := rs.GetGroupTrait(resource)
+	ent, err := ParseEntitlementIDV2(resource.Id.Resource)
 	if err != nil {
 		return nil, "", nil, err
 	}
 
-	if projectKey, ok = rs.GetProfileStringValue(groupTrait.Profile, "project_key"); !ok {
-		return nil, "", nil, fmt.Errorf("project_key not found")
-	}
-
+	projectKey = ent[repositoryProjectKey] // project_key
 	switch bag.ResourceTypeID() {
 	case resourceTypeGroup.Id:
 		groupsPermissions, nextPageToken, err = p.client.ListGroupProjectsPermissions(ctx, client.PageOptions{
@@ -176,7 +170,7 @@ func (p *projectBuilder) Grants(ctx context.Context, resource *v2.Resource, pTok
 				return nil, "", nil, fmt.Errorf("error creating group resource for repository %s: %w", resource.Id.Resource, err)
 			}
 
-			membershipGrant := grant.NewGrant(resource, member.Permission, ur.Id)
+			membershipGrant := NewGrant(resource, member.Permission, ur.Id)
 			rv = append(rv, membershipGrant)
 		}
 	case resourceTypeUser.Id:
@@ -208,7 +202,7 @@ func (p *projectBuilder) Grants(ctx context.Context, resource *v2.Resource, pTok
 				return nil, "", nil, fmt.Errorf("error creating user resource for project %s: %w", resource.Id.Resource, err)
 			}
 
-			membershipGrant := grant.NewGrant(resource, member.Permission, ur.Id)
+			membershipGrant := NewGrant(resource, member.Permission, ur.Id)
 			rv = append(rv, membershipGrant)
 		}
 	default:
@@ -224,10 +218,7 @@ func (p *projectBuilder) Grants(ctx context.Context, resource *v2.Resource, pTok
 }
 
 func (p *projectBuilder) Grant(ctx context.Context, principal *v2.Resource, entitlement *v2.Entitlement) (annotations.Annotations, error) {
-	var (
-		projectKey, permission string
-		ok                     bool
-	)
+	var projectKey, permission string
 	l := ctxzap.Extract(ctx)
 	if principal.Id.ResourceType != resourceTypeUser.Id && principal.Id.ResourceType != resourceTypeGroup.Id {
 		l.Warn(
@@ -250,15 +241,12 @@ func (p *projectBuilder) Grant(ctx context.Context, principal *v2.Resource, enti
 		return nil, fmt.Errorf("bitbucket(dc) connector: invalid permission type: %s", permissions[len(permissions)-1])
 	}
 
-	groupTrait, err := rs.GetGroupTrait(entitlement.Resource)
+	ent, err := ParseEntitlementIDV2(entitlement.Resource.Id.Resource)
 	if err != nil {
 		return nil, err
 	}
 
-	if projectKey, ok = rs.GetProfileStringValue(groupTrait.Profile, "project_key"); !ok {
-		return nil, fmt.Errorf("project_key not found")
-	}
-
+	projectKey = ent[repositoryProjectKey] // project_key
 	switch principal.Id.ResourceType {
 	case resourceTypeUser.Id:
 		userId, err := strconv.Atoi(principal.Id.Resource)
@@ -330,11 +318,7 @@ func (p *projectBuilder) Grant(ctx context.Context, principal *v2.Resource, enti
 }
 
 func (g *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.Annotations, error) {
-	var (
-		projectKey, permission string
-		ok                     bool
-		repositorySlug         string
-	)
+	var projectKey, permission, repositorySlug string
 	l := ctxzap.Extract(ctx)
 	principal := grant.Principal
 	entitlement := grant.Entitlement
@@ -362,15 +346,12 @@ func (g *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotatio
 		return nil, fmt.Errorf("bitbucket(dc) connector: invalid permission type: %s", permissions[len(permissions)-1])
 	}
 
-	groupTrait, err := rs.GetGroupTrait(entitlement.Resource)
+	ent, err := ParseEntitlementIDV2(entitlement.Resource.Id.Resource)
 	if err != nil {
 		return nil, err
 	}
 
-	if projectKey, ok = rs.GetProfileStringValue(groupTrait.Profile, "project_key"); !ok {
-		return nil, fmt.Errorf("project_key not found")
-	}
-
+	projectKey = ent[repositoryProjectKey] // project_key
 	switch principal.Id.ResourceType {
 	case resourceTypeUser.Id:
 		userId, err := strconv.Atoi(principal.Id.Resource)
