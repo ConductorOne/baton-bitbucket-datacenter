@@ -347,7 +347,6 @@ func (r *repoBuilder) Grant(ctx context.Context, principal *v2.Resource, entitle
 func (r *repoBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.Annotations, error) {
 	var (
 		projectKey     string
-		ok             bool
 		repositorySlug string
 	)
 	l := ctxzap.Extract(ctx)
@@ -370,19 +369,13 @@ func (r *repoBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.
 		return nil, err
 	}
 
-	groupTrait, err := rs.GetGroupTrait(entitlement.Resource)
+	ent, err := ParseEntitlementIDV2(entitlement.Resource.Id.Resource)
 	if err != nil {
 		return nil, err
 	}
 
-	if projectKey, ok = rs.GetProfileStringValue(groupTrait.Profile, "repository_project_key"); !ok {
-		return nil, fmt.Errorf("repository_project_key not found")
-	}
-
-	if repositorySlug, ok = rs.GetProfileStringValue(groupTrait.Profile, "repository_full_name"); !ok {
-		return nil, fmt.Errorf("repository_full_name not found")
-	}
-
+	projectKey = ent[repositoryProjectKey]   // repository_project_key
+	repositorySlug = ent[repositoryFullName] // repository_full_name
 	switch principal.Id.ResourceType {
 	case resourceTypeUser.Id:
 		userId, err := strconv.Atoi(principal.Id.Resource)
