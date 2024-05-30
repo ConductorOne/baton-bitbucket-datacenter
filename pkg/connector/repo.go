@@ -11,7 +11,6 @@ import (
 	"github.com/conductorone/baton-sdk/pkg/annotations"
 	"github.com/conductorone/baton-sdk/pkg/pagination"
 	ent "github.com/conductorone/baton-sdk/pkg/types/entitlement"
-	"github.com/conductorone/baton-sdk/pkg/types/grant"
 	rs "github.com/conductorone/baton-sdk/pkg/types/resource"
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
 	"go.uber.org/zap"
@@ -180,7 +179,7 @@ func (r *repoBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken 
 				return nil, "", nil, fmt.Errorf("error creating group resource for repository %s: %w", resource.Id.Resource, err)
 			}
 
-			membershipGrant := grant.NewGrant(resource, member.Permission, ur.Id)
+			membershipGrant := NewGrant(resource, member.Permission, ur.Id)
 			rv = append(rv, membershipGrant)
 		}
 	case resourceTypeUser.Id:
@@ -213,7 +212,7 @@ func (r *repoBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken 
 				return nil, "", nil, fmt.Errorf("error creating user resource for repository %s: %w", resource.Id.Resource, err)
 			}
 
-			membershipGrant := grant.NewGrant(resource, member.Permission, ur.Id)
+			membershipGrant := NewGrant(resource, member.Permission, ur.Id)
 			rv = append(rv, membershipGrant)
 		}
 	default:
