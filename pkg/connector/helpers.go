@@ -263,11 +263,7 @@ func listGlobalUserPermissions(ctx context.Context, cli *client.DataCenterClient
 
 		page, err = strconv.Atoi(nextPageToken)
 		if err != nil {
-			return nil, &client.BitbucketError{
-				ErrorMessage:     err.Error(),
-				ErrorDescription: err.Error(),
-				ErrorCode:        0,
-			}
+			return nil, err
 		}
 	}
 
@@ -295,11 +291,7 @@ func listGlobalGroupPermissions(ctx context.Context, cli *client.DataCenterClien
 
 		page, err = strconv.Atoi(nextPageToken)
 		if err != nil {
-			return nil, &client.BitbucketError{
-				ErrorMessage:     err.Error(),
-				ErrorDescription: err.Error(),
-				ErrorCode:        0,
-			}
+			return nil, err
 		}
 	}
 
