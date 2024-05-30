@@ -11,6 +11,7 @@ import (
 	"github.com/conductorone/baton-sdk/pkg/annotations"
 	"github.com/conductorone/baton-sdk/pkg/pagination"
 	ent "github.com/conductorone/baton-sdk/pkg/types/entitlement"
+	"github.com/conductorone/baton-sdk/pkg/types/grant"
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
 	"go.uber.org/zap"
 )
@@ -100,7 +101,7 @@ func (p *projectBuilder) Entitlements(_ context.Context, resource *v2.Resource, 
 			ent.WithDescription(fmt.Sprintf("%s access to %s project in Bitbucket DC", titleCase(permission), resource.DisplayName)),
 		}
 
-		rv = append(rv, NewPermissionEntitlement(
+		rv = append(rv, ent.NewPermissionEntitlement(
 			resource,
 			permission,
 			permissionOptions...,
@@ -142,12 +143,16 @@ func (p *projectBuilder) Grants(ctx context.Context, resource *v2.Resource, pTok
 		}
 	}
 
-	ent, err := ParseEntitlementIDV2(resource.Id.Resource)
+	projectId, err := strconv.Atoi(resource.Id.Resource)
 	if err != nil {
 		return nil, "", nil, err
 	}
 
-	projectKey = ent[repositoryProjectKey] // project_key
+	projectKey, err = getProjectKey(ctx, p, projectId)
+	if err != nil {
+		return nil, "", nil, err
+	}
+
 	switch bag.ResourceTypeID() {
 	case resourceTypeGroup.Id:
 		groupsPermissions, nextPageToken, err = p.client.ListGroupProjectsPermissions(ctx, client.PageOptions{
@@ -170,7 +175,7 @@ func (p *projectBuilder) Grants(ctx context.Context, resource *v2.Resource, pTok
 				return nil, "", nil, fmt.Errorf("error creating group resource for repository %s: %w", resource.Id.Resource, err)
 			}
 
-			membershipGrant := NewGrant(resource, member.Permission, ur.Id)
+			membershipGrant := grant.NewGrant(resource, member.Permission, ur.Id)
 			rv = append(rv, membershipGrant)
 		}
 	case resourceTypeUser.Id:
@@ -202,7 +207,7 @@ func (p *projectBuilder) Grants(ctx context.Context, resource *v2.Resource, pTok
 				return nil, "", nil, fmt.Errorf("error creating user resource for project %s: %w", resource.Id.Resource, err)
 			}
 
-			membershipGrant := NewGrant(resource, member.Permission, ur.Id)
+			membershipGrant := grant.NewGrant(resource, member.Permission, ur.Id)
 			rv = append(rv, membershipGrant)
 		}
 	default:
@@ -241,12 +246,16 @@ func (p *projectBuilder) Grant(ctx context.Context, principal *v2.Resource, enti
 		return nil, fmt.Errorf("bitbucket(dc) connector: invalid permission type: %s", permissions[len(permissions)-1])
 	}
 
-	ent, err := ParseEntitlementIDV2(entitlement.Resource.Id.Resource)
+	projectId, err := strconv.Atoi(entitlement.Resource.Id.Resource)
 	if err != nil {
 		return nil, err
 	}
 
-	projectKey = ent[repositoryProjectKey] // project_key
+	projectKey, err = getProjectKey(ctx, p, projectId)
+	if err != nil {
+		return nil, err
+	}
+
 	switch principal.Id.ResourceType {
 	case resourceTypeUser.Id:
 		userId, err := strconv.Atoi(principal.Id.Resource)
@@ -317,8 +326,11 @@ func (p *projectBuilder) Grant(ctx context.Context, principal *v2.Resource, enti
 	return nil, nil
 }
 
-func (g *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.Annotations, error) {
-	var projectKey, permission, repositorySlug string
+func (p *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.Annotations, error) {
+	var (
+		projectKey, permission string
+		repositorySlug         string
+	)
 	l := ctxzap.Extract(ctx)
 	principal := grant.Principal
 	entitlement := grant.Entitlement
@@ -346,12 +358,16 @@ func (g *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotatio
 		return nil, fmt.Errorf("bitbucket(dc) connector: invalid permission type: %s", permissions[len(permissions)-1])
 	}
 
-	ent, err := ParseEntitlementIDV2(entitlement.Resource.Id.Resource)
+	projectId, err := strconv.Atoi(entitlement.Resource.Id.Resource)
 	if err != nil {
 		return nil, err
 	}
 
-	projectKey = ent[repositoryProjectKey] // project_key
+	projectKey, err = getProjectKey(ctx, p, projectId)
+	if err != nil {
+		return nil, err
+	}
+
 	switch principal.Id.ResourceType {
 	case resourceTypeUser.Id:
 		userId, err := strconv.Atoi(principal.Id.Resource)
@@ -359,7 +375,7 @@ func (g *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotatio
 			return nil, err
 		}
 
-		listUser, err := listUserProjectsPermissions(ctx, g.client, projectKey)
+		listUser, err := listUserProjectsPermissions(ctx, p.client, projectKey)
 		if err != nil {
 			return nil, err
 		}
@@ -376,7 +392,7 @@ func (g *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotatio
 			return nil, fmt.Errorf("bitbucket(dc)-connector: user doesn't have this project permission")
 		}
 
-		err = g.client.RevokeUserProjectPermission(ctx, projectKey, principal.DisplayName)
+		err = p.client.RevokeUserProjectPermission(ctx, projectKey, principal.DisplayName)
 		if err != nil {
 			return nil, fmt.Errorf("bitbucket(dc)-connector: failed to remove repository user permission: %w", err)
 		}
@@ -388,7 +404,7 @@ func (g *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotatio
 			zap.String("RepositorySlug", repositorySlug),
 		)
 	case resourceTypeGroup.Id:
-		listGroup, err := listGroupProjectsPermissions(ctx, g.client, projectKey)
+		listGroup, err := listGroupProjectsPermissions(ctx, p.client, projectKey)
 		if err != nil {
 			return nil, err
 		}
@@ -405,7 +421,7 @@ func (g *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotatio
 			return nil, fmt.Errorf("bitbucket(dc)-connector: group doesn't have this project permission")
 		}
 
-		err = g.client.RevokeGroupProjectPermission(ctx, projectKey, principal.DisplayName)
+		err = p.client.RevokeGroupProjectPermission(ctx, projectKey, principal.DisplayName)
 		if err != nil {
 			return nil, fmt.Errorf("bitbucket(dc)-connector: failed to remove repository group permission: %w", err)
 		}

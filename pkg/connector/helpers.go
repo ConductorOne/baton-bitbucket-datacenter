@@ -3,6 +3,7 @@ package connector
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -105,7 +106,7 @@ func projectResource(ctx context.Context, project *client.Projects, parentResour
 	resource, err := rs.NewGroupResource(
 		project.Name,
 		resourceTypeProject,
-		fmt.Sprintf("%d:%s:%s", project.ID, project.Name, project.Key),
+		project.ID,
 		groupTraitOptions,
 		rs.WithParentResourceID(parentResourceID),
 	)
@@ -453,6 +454,34 @@ func listGroupProjectsPermissions(ctx context.Context, cli *client.DataCenterCli
 	return lstPermissions, nil
 }
 
+func listProjects(ctx context.Context, cli *client.DataCenterClient) ([]client.Projects, error) {
+	var (
+		page        int
+		lstProjects []client.Projects
+	)
+	for {
+		projects, nextPageToken, err := cli.ListProjects(ctx, client.PageOptions{
+			PerPage: ITEMSPERPAGE,
+			Page:    page,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		lstProjects = append(lstProjects, projects...)
+		if nextPageToken == "" {
+			break
+		}
+
+		page, err = strconv.Atoi(nextPageToken)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return lstProjects, nil
+}
+
 func newEntitlementID(resource *v2.Resource, permission string) string {
 	arr := strings.Split(resource.Id.Resource, ":")
 	if len(arr) > 1 {
@@ -510,4 +539,21 @@ func NewGrant(resource *v2.Resource, entitlementName string, principal grant.Gra
 	}
 
 	return grant
+}
+
+func getProjectKey(ctx context.Context, p *projectBuilder, projectId int) (string, error) {
+	projects, err := listProjects(ctx, p.client)
+	if err != nil {
+		return "", err
+	}
+
+	projectPos := slices.IndexFunc(projects, func(c client.Projects) bool {
+		return c.ID == projectId
+	})
+
+	if projectPos == -1 {
+		return "", fmt.Errorf("project key was not found")
+	}
+
+	return projects[projectPos].Key, nil
 }
