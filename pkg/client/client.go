@@ -21,7 +21,6 @@ type DataCenterClient struct {
 }
 
 type BitbucketError struct {
-	Error            error
 	ErrorMessage     string                   `json:"error"`
 	ErrorDescription string                   `json:"error_description"`
 	ErrorCode        int                      `json:"errorCode,omitempty"`
@@ -29,6 +28,10 @@ type BitbucketError struct {
 	ErrorLink        string                   `json:"errorLink,omitempty"`
 	ErrorId          string                   `json:"errorId,omitempty"`
 	ErrorCauses      []map[string]interface{} `json:"errorCauses,omitempty"`
+}
+
+func (b *BitbucketError) Error() string {
+	return b.ErrorMessage
 }
 
 // GET - http://{baseurl}/rest/api/latest/users
@@ -531,7 +534,7 @@ func (d *DataCenterClient) ListGroupMembers(ctx context.Context, opts PageOption
 // GetGlobalUserPermissions
 // Get users with a global permission
 // https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-permission-management/#api-api-latest-admin-permissions-users-get
-func (d *DataCenterClient) GetGlobalUserPermissions(ctx context.Context, startPage, limit string) ([]UsersPermissions, Page, BitbucketError) {
+func (d *DataCenterClient) GetGlobalUserPermissions(ctx context.Context, startPage, limit string) ([]UsersPermissions, Page, error) {
 	var (
 		permissionsData GlobalPermissionsAPIData
 		page            Page
@@ -539,16 +542,12 @@ func (d *DataCenterClient) GetGlobalUserPermissions(ctx context.Context, startPa
 	)
 	endpointUrl, err := url.JoinPath(d.baseUrl, allUsersWithGlobalPermissionEndpoint)
 	if err != nil {
-		return nil, page, BitbucketError{
-			Error: err,
-		}
+		return nil, page, err
 	}
 
 	uri, err := url.Parse(endpointUrl)
 	if err != nil {
-		return nil, Page{}, BitbucketError{
-			Error: err,
-		}
+		return nil, Page{}, err
 	}
 
 	if startPage != "" {
@@ -563,15 +562,12 @@ func (d *DataCenterClient) GetGlobalUserPermissions(ctx context.Context, startPa
 		WithAuthorization(d.getUser(), d.getPWD(), d.getToken()),
 	)
 	if err != nil {
-		return nil, Page{}, BitbucketError{
-			Error: err,
-		}
+		return nil, Page{}, err
 	}
 
 	resp, err := d.httpClient.Do(req, uhttp.WithJSONResponse(&permissionsData))
 	if err != nil {
-		return nil, Page{}, BitbucketError{
-			Error:            err,
+		return nil, Page{}, &BitbucketError{
 			ErrorMessage:     err.Error(),
 			ErrorDescription: err.Error(),
 			ErrorCode:        resp.StatusCode,
@@ -591,12 +587,10 @@ func (d *DataCenterClient) GetGlobalUserPermissions(ctx context.Context, startPa
 		}
 	}
 
-	return permissionsData.UsersPermissions, page, BitbucketError{
-		Error: nil,
-	}
+	return permissionsData.UsersPermissions, page, nil
 }
 
-func (d *DataCenterClient) GetGlobalGroupPermissions(ctx context.Context, startPage, limit string) ([]GroupsPermissions, Page, BitbucketError) {
+func (d *DataCenterClient) GetGlobalGroupPermissions(ctx context.Context, startPage, limit string) ([]GroupsPermissions, Page, error) {
 	var (
 		permissionsData GlobalGroupPermissionsAPIData
 		page            Page
@@ -604,16 +598,12 @@ func (d *DataCenterClient) GetGlobalGroupPermissions(ctx context.Context, startP
 	)
 	endpointUrl, err := url.JoinPath(d.baseUrl, allGroupsWithGlobalPermissionEndpoint)
 	if err != nil {
-		return nil, Page{}, BitbucketError{
-			Error: err,
-		}
+		return nil, Page{}, err
 	}
 
 	uri, err := url.Parse(endpointUrl)
 	if err != nil {
-		return nil, Page{}, BitbucketError{
-			Error: err,
-		}
+		return nil, Page{}, err
 	}
 
 	if startPage != "" {
@@ -628,15 +618,12 @@ func (d *DataCenterClient) GetGlobalGroupPermissions(ctx context.Context, startP
 		WithAuthorization(d.getUser(), d.getPWD(), d.getToken()),
 	)
 	if err != nil {
-		return nil, Page{}, BitbucketError{
-			Error: err,
-		}
+		return nil, Page{}, err
 	}
 
 	resp, err := d.httpClient.Do(req, uhttp.WithJSONResponse(&permissionsData))
 	if err != nil {
-		return nil, Page{}, BitbucketError{
-			Error:            err,
+		return nil, Page{}, &BitbucketError{
 			ErrorMessage:     err.Error(),
 			ErrorDescription: err.Error(),
 			ErrorCode:        resp.StatusCode,
@@ -655,18 +642,16 @@ func (d *DataCenterClient) GetGlobalGroupPermissions(ctx context.Context, startP
 		}
 	}
 
-	return permissionsData.GroupsPermissions, page, BitbucketError{
-		Error: nil,
-	}
+	return permissionsData.GroupsPermissions, page, nil
 }
 
-func (d *DataCenterClient) ListGlobalUserPermissions(ctx context.Context, opts PageOptions) ([]UsersPermissions, string, BitbucketError) {
+func (d *DataCenterClient) ListGlobalUserPermissions(ctx context.Context, opts PageOptions) ([]UsersPermissions, string, error) {
 	var nextPageToken string = ""
 	usersPermissions, page, err := d.GetGlobalUserPermissions(ctx,
 		strconv.Itoa(opts.Page),
 		strconv.Itoa(opts.PerPage),
 	)
-	if err.Error != nil {
+	if err != nil {
 		return []UsersPermissions{}, "", err
 	}
 
@@ -674,18 +659,16 @@ func (d *DataCenterClient) ListGlobalUserPermissions(ctx context.Context, opts P
 		nextPageToken = *page.NextPage
 	}
 
-	return usersPermissions, nextPageToken, BitbucketError{
-		Error: nil,
-	}
+	return usersPermissions, nextPageToken, nil
 }
 
-func (d *DataCenterClient) ListGlobalGroupPermissions(ctx context.Context, opts PageOptions) ([]GroupsPermissions, string, BitbucketError) {
+func (d *DataCenterClient) ListGlobalGroupPermissions(ctx context.Context, opts PageOptions) ([]GroupsPermissions, string, error) {
 	var nextPageToken string = ""
 	groupsPermissions, page, err := d.GetGlobalGroupPermissions(ctx,
 		strconv.Itoa(opts.Page),
 		strconv.Itoa(opts.PerPage),
 	)
-	if err.Error != nil {
+	if err != nil {
 		return groupsPermissions, "", err
 	}
 
@@ -693,9 +676,7 @@ func (d *DataCenterClient) ListGlobalGroupPermissions(ctx context.Context, opts 
 		nextPageToken = *page.NextPage
 	}
 
-	return groupsPermissions, nextPageToken, BitbucketError{
-		Error: nil,
-	}
+	return groupsPermissions, nextPageToken, nil
 }
 
 // GetUserRepositoryPermissions

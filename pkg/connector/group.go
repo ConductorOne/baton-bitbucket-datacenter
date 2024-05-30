@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -89,6 +90,7 @@ func (g *groupBuilder) Entitlements(ctx context.Context, resource *v2.Resource, 
 		nextPageToken string
 		err           error
 		rv            []*v2.Entitlement
+		bitbucketErr  *client.BitbucketError
 	)
 
 	if pToken.Token != "" {
@@ -98,14 +100,19 @@ func (g *groupBuilder) Entitlements(ctx context.Context, resource *v2.Resource, 
 		}
 	}
 
-	permissions, nextPageToken, bitbucketError := g.client.ListGlobalUserPermissions(ctx, client.PageOptions{
+	permissions, nextPageToken, err := g.client.ListGlobalUserPermissions(ctx, client.PageOptions{
 		PerPage: ITEMSPERPAGE,
 		Page:    pageToken,
 	})
 
-	if bitbucketError.Error != nil {
-		if bitbucketError.ErrorCode != http.StatusUnauthorized {
-			return nil, "", nil, fmt.Errorf("%s", bitbucketError.Error.Error())
+	if err != nil {
+		switch {
+		case errors.As(err, &bitbucketErr):
+			if bitbucketErr.ErrorCode != http.StatusUnauthorized {
+				return nil, "", nil, fmt.Errorf("%s", bitbucketErr.Error())
+			}
+		default:
+			return nil, "", nil, err
 		}
 
 		permissions = []client.UsersPermissions{{Permission: "LICENSED_USER"}}
@@ -135,6 +142,7 @@ func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 		err                             error
 		rv                              []*v2.Grant
 		userPermission, groupPermission string
+		bitbucketErr                    *client.BitbucketError
 	)
 	_, bag, err := unmarshalSkipToken(pToken)
 	if err != nil {
@@ -155,15 +163,29 @@ func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 	}
 
 	// Get user permissions
-	userPermissions, bitbucketError := listGlobalUserPermissions(ctx, g.client)
-	if bitbucketError.Error != nil && bitbucketError.ErrorCode != http.StatusUnauthorized {
-		return nil, "", nil, fmt.Errorf("%s", bitbucketError.Error.Error())
+	userPermissions, err := listGlobalUserPermissions(ctx, g.client)
+	if err != nil {
+		switch {
+		case errors.As(err, &bitbucketErr):
+			if bitbucketErr.ErrorCode != http.StatusUnauthorized {
+				return nil, "", nil, fmt.Errorf("%s", bitbucketErr.Error())
+			}
+		default:
+			return nil, "", nil, err
+		}
 	}
 
 	// Get group permissions
-	groupPermissions, bitbucketError := listGlobalGroupPermissions(ctx, g.client)
-	if bitbucketError.Error != nil && bitbucketError.ErrorCode != http.StatusUnauthorized {
-		return nil, "", nil, fmt.Errorf("%s", bitbucketError.Error.Error())
+	groupPermissions, err := listGlobalGroupPermissions(ctx, g.client)
+	if err != nil {
+		switch {
+		case errors.As(err, &bitbucketErr):
+			if bitbucketErr.ErrorCode != http.StatusUnauthorized {
+				return nil, "", nil, fmt.Errorf("%s", bitbucketErr.Error())
+			}
+		default:
+			return nil, "", nil, err
+		}
 	}
 
 	groupPos := slices.IndexFunc(groupPermissions, func(c client.GroupsPermissions) bool {
