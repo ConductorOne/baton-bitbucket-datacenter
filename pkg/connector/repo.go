@@ -22,12 +22,10 @@ type repoBuilder struct {
 }
 
 const (
-	roleRepoRead         = "REPO_READ"
-	roleRepoWrite        = "REPO_WRITE"
-	roleRepoCreate       = "REPO_CREATE"
-	roleRepoAdmin        = "REPO_ADMIN"
-	repositoryProjectKey = 2
-	repositoryFullName   = 1
+	roleRepoRead   = "REPO_READ"
+	roleRepoWrite  = "REPO_WRITE"
+	roleRepoCreate = "REPO_CREATE"
+	roleRepoAdmin  = "REPO_ADMIN"
 )
 
 var repositoryRoles = []string{roleRepoRead, roleRepoWrite, roleRepoAdmin, roleRepoCreate}

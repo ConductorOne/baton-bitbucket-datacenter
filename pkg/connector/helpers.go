@@ -521,7 +521,7 @@ func getRepositorySlug(ctx context.Context, r *repoBuilder, repoId int) (string,
 	})
 
 	if repoPos == -1 {
-		return "", "", fmt.Errorf("project key was not found")
+		return "", "", fmt.Errorf("repository was not found")
 	}
 
 	return repos[repoPos].Project.Key, repos[repoPos].Slug, nil
