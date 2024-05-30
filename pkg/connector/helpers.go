@@ -12,7 +12,6 @@ import (
 	"github.com/conductorone/baton-sdk/pkg/annotations"
 	"github.com/conductorone/baton-sdk/pkg/pagination"
 	ent "github.com/conductorone/baton-sdk/pkg/types/entitlement"
-	"github.com/conductorone/baton-sdk/pkg/types/grant"
 	rs "github.com/conductorone/baton-sdk/pkg/types/resource"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
@@ -464,50 +463,6 @@ func listProjects(ctx context.Context, cli *client.DataCenterClient) ([]client.P
 	}
 
 	return lstProjects, nil
-}
-
-func newEntitlementID(resource *v2.Resource, permission string) string {
-	arr := strings.Split(resource.Id.Resource, ":")
-	if len(arr) > 1 {
-		return fmt.Sprintf("%s:%s:%s", resource.Id.ResourceType, arr[0], permission)
-	}
-
-	return fmt.Sprintf("%s:%s:%s", resource.Id.ResourceType, resource.Id.Resource, permission)
-}
-
-// NewGrant returns a new grant for the given entitlement on the resource for the provided principal resource ID.
-func NewGrant(resource *v2.Resource, entitlementName string, principal grant.GrantPrincipal, grantOptions ...grant.GrantOption) *v2.Grant {
-	var resourceID *v2.ResourceId
-	entitlement := &v2.Entitlement{
-		Id:       newEntitlementID(resource, entitlementName),
-		Resource: resource,
-	}
-	grant := &v2.Grant{
-		Entitlement: entitlement,
-	}
-	switch p := principal.(type) {
-	case *v2.ResourceId:
-		resourceID = p
-		grant.Principal = &v2.Resource{Id: p}
-	case *v2.Resource:
-		grant.Principal = p
-		resourceID = p.Id
-	default:
-		panic("unexpected principal type")
-	}
-
-	if resourceID == nil {
-		panic("principal resource must have a valid resource ID")
-	}
-	grant.Id = fmt.Sprintf("%s:%s:%s", entitlement.Id, resourceID.ResourceType, resourceID.Resource)
-	for _, grantOption := range grantOptions {
-		err := grantOption(grant)
-		if err != nil {
-			panic(err)
-		}
-	}
-
-	return grant
 }
 
 func getProjectKey(ctx context.Context, p *projectBuilder, projectId int) (string, error) {
