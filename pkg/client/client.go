@@ -659,7 +659,7 @@ func (d *DataCenterClient) ListGlobalUserPermissions(ctx context.Context, opts P
 		nextPageToken = *page.NextPage
 	}
 
-	return usersPermissions, nextPageToken, nil
+	return usersPermissions, nextPageToken, err
 }
 
 func (d *DataCenterClient) ListGlobalGroupPermissions(ctx context.Context, opts PageOptions) ([]GroupsPermissions, string, error) {
@@ -676,7 +676,7 @@ func (d *DataCenterClient) ListGlobalGroupPermissions(ctx context.Context, opts 
 		nextPageToken = *page.NextPage
 	}
 
-	return groupsPermissions, nextPageToken, nil
+	return groupsPermissions, nextPageToken, err
 }
 
 // GetUserRepositoryPermissions
