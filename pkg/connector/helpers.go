@@ -129,7 +129,7 @@ func repositoryResource(ctx context.Context, repository *client.Repos, parentRes
 	resource, err := rs.NewGroupResource(
 		repository.Name,
 		resourceTypeRepository,
-		repository.ID,
+		fmt.Sprintf("%d:%s:%s", repository.ID, repository.Slug, repository.Project.Key),
 		groupTraitOptions,
 		rs.WithParentResourceID(parentResourceID),
 	)
@@ -228,6 +228,16 @@ func ParseEntitlementID(id string) (*v2.ResourceId, []string, error) {
 	}
 
 	return resourceId, parts, nil
+}
+
+func ParseEntitlementIDV2(id string) ([]string, error) {
+	parts := strings.Split(id, ":")
+	// Need to be at least 3 parts type:entitlement_id:slug
+	if len(parts) < 3 || len(parts) > 3 {
+		return nil, fmt.Errorf("bitbucket(dc)-connector: invalid resource id")
+	}
+
+	return parts, nil
 }
 
 func listGlobalUserPermissions(ctx context.Context, cli *client.DataCenterClient) ([]client.UsersPermissions, client.BitbucketError) {
@@ -440,4 +450,28 @@ func listGroupProjectsPermissions(ctx context.Context, cli *client.DataCenterCli
 	}
 
 	return lstPermissions, nil
+}
+
+func newEntitlementID(resource *v2.Resource, permission string) string {
+	arr := strings.Split(resource.Id.Resource, ":")
+	if len(arr) > 1 {
+		return fmt.Sprintf("%s:%s:%s", resource.Id.ResourceType, arr[0], permission)
+	}
+
+	return fmt.Sprintf("%s:%s:%s", resource.Id.ResourceType, resource.Id.Resource, permission)
+}
+
+func NewPermissionEntitlement(resource *v2.Resource, name string, entitlementOptions ...ent.EntitlementOption) *v2.Entitlement {
+	entitlement := &v2.Entitlement{
+		Id:          newEntitlementID(resource, name),
+		DisplayName: name,
+		Slug:        name,
+		Purpose:     v2.Entitlement_PURPOSE_VALUE_PERMISSION,
+		Resource:    resource,
+	}
+
+	for _, entitlementOption := range entitlementOptions {
+		entitlementOption(entitlement)
+	}
+	return entitlement
 }

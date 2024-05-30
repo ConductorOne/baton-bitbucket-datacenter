@@ -23,10 +23,12 @@ type repoBuilder struct {
 }
 
 const (
-	roleRepoRead   = "REPO_READ"
-	roleRepoWrite  = "REPO_WRITE"
-	roleRepoCreate = "REPO_CREATE"
-	roleRepoAdmin  = "REPO_ADMIN"
+	roleRepoRead         = "REPO_READ"
+	roleRepoWrite        = "REPO_WRITE"
+	roleRepoCreate       = "REPO_CREATE"
+	roleRepoAdmin        = "REPO_ADMIN"
+	repositoryProjectKey = 2
+	repositoryFullName   = 1
 )
 
 var repositoryRoles = []string{roleRepoRead, roleRepoWrite, roleRepoAdmin, roleRepoCreate}
@@ -103,8 +105,7 @@ func (r *repoBuilder) Entitlements(_ context.Context, resource *v2.Resource, _ *
 			ent.WithDisplayName(fmt.Sprintf("%s Repository %s", resource.DisplayName, role)),
 			ent.WithDescription(fmt.Sprintf("%s access to %s repository in Bitbucket DC", titleCase(role), resource.DisplayName)),
 		}
-
-		rv = append(rv, ent.NewPermissionEntitlement(
+		rv = append(rv, NewPermissionEntitlement(
 			resource,
 			role,
 			permissionOptions...,
@@ -230,10 +231,10 @@ func (r *repoBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken 
 func (r *repoBuilder) Grant(ctx context.Context, principal *v2.Resource, entitlement *v2.Entitlement) (annotations.Annotations, error) {
 	var (
 		projectKey     string
-		ok             bool
 		repositorySlug string
 		permission     string
 	)
+
 	l := ctxzap.Extract(ctx)
 	if principal.Id.ResourceType != resourceTypeUser.Id && principal.Id.ResourceType != resourceTypeGroup.Id {
 		l.Warn(
@@ -255,19 +256,14 @@ func (r *repoBuilder) Grant(ctx context.Context, principal *v2.Resource, entitle
 	default:
 		return nil, fmt.Errorf("bitbucket(dc) connector: invalid permission type: %s", permissions[len(permissions)-1])
 	}
-	groupTrait, err := rs.GetGroupTrait(entitlement.Resource)
+
+	ent, err := ParseEntitlementIDV2(entitlement.Resource.Id.Resource)
 	if err != nil {
 		return nil, err
 	}
 
-	if projectKey, ok = rs.GetProfileStringValue(groupTrait.Profile, "repository_project_key"); !ok {
-		return nil, fmt.Errorf("repository_project_key not found")
-	}
-
-	if repositorySlug, ok = rs.GetProfileStringValue(groupTrait.Profile, "repository_full_name"); !ok {
-		return nil, fmt.Errorf("repository_full_name not found")
-	}
-
+	projectKey = ent[repositoryProjectKey]   // repository_project_key
+	repositorySlug = ent[repositoryFullName] // repository_full_name
 	switch principal.Id.ResourceType {
 	case resourceTypeUser.Id:
 		userId, err := strconv.Atoi(principal.Id.Resource)
