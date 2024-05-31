@@ -30,7 +30,10 @@
     {
       "resourceType":  {
         "id":  "repository",
-        "displayName":  "Repository"
+        "displayName":  "Repository",
+        "traits":  [
+          "TRAIT_GROUP"
+        ]
       },
       "capabilities":  [
         "CAPABILITY_SYNC",
