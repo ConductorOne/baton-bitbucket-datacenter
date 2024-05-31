@@ -455,8 +455,8 @@ func listProjects(ctx context.Context, cli *client.DataCenterClient) ([]client.P
 	return lstProjects, nil
 }
 
-func getProjectKey(ctx context.Context, p *projectBuilder, projectId int) (string, error) {
-	projects, err := listProjects(ctx, p.client)
+func findProjectKey(ctx context.Context, cli *client.DataCenterClient, projectId int) (string, error) {
+	projects, err := listProjects(ctx, cli)
 	if err != nil {
 		return "", err
 	}
@@ -470,6 +470,29 @@ func getProjectKey(ctx context.Context, p *projectBuilder, projectId int) (strin
 	}
 
 	return projects[projectPos].Key, nil
+}
+
+func getProjectKey(ctx context.Context, customType interface{}, projectId int) (string, error) {
+	var (
+		projectKey string
+		err        error
+	)
+	switch cli := customType.(type) {
+	case *projectBuilder:
+		projectKey, err = findProjectKey(ctx, cli.client, projectId)
+		if err != nil {
+			return "", err
+		}
+	case *groupBuilder:
+		projectKey, err = findProjectKey(ctx, cli.client, projectId)
+		if err != nil {
+			return "", err
+		}
+	default:
+		return "", fmt.Errorf("projectKey not found, unknown type")
+	}
+
+	return projectKey, nil
 }
 
 func listRepositories(ctx context.Context, cli *client.DataCenterClient) ([]client.Repos, error) {

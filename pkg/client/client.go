@@ -1287,7 +1287,13 @@ func (d *DataCenterClient) RevokeGroupProjectPermission(ctx context.Context, pro
 
 	resp, err := d.httpClient.Do(req)
 	if err != nil {
-		return err
+		return &BitbucketError{
+			ErrorMessage:     err.Error(),
+			ErrorDescription: err.Error(),
+			ErrorCode:        resp.StatusCode,
+			ErrorSummary:     fmt.Sprint(resp.Body),
+			ErrorLink:        resp.Status,
+		}
 	}
 
 	defer resp.Body.Close()
@@ -1367,7 +1373,13 @@ func (d *DataCenterClient) UpdateGroupProjectPermission(ctx context.Context, pro
 
 	resp, err := d.httpClient.Do(req)
 	if err != nil {
-		return err
+		return &BitbucketError{
+			ErrorMessage:     err.Error(),
+			ErrorDescription: err.Error(),
+			ErrorCode:        resp.StatusCode,
+			ErrorSummary:     fmt.Sprint(resp.Body),
+			ErrorLink:        resp.Status,
+		}
 	}
 
 	defer resp.Body.Close()
