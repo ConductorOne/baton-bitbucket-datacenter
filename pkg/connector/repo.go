@@ -279,7 +279,7 @@ func (r *repoBuilder) Grant(ctx context.Context, principal *v2.Resource, entitle
 				zap.String("principal_id", principal.Id.String()),
 				zap.String("principal_type", principal.Id.ResourceType),
 			)
-			return nil, fmt.Errorf("bitbucket(dc)-connector: user already has this repository permission")
+			return nil, fmt.Errorf("bitbucket(dc)-connector: user %s already has this repository permission", principal.DisplayName)
 		}
 
 		err = r.client.UpdateUserRepositoryPermission(ctx,
@@ -313,7 +313,7 @@ func (r *repoBuilder) Grant(ctx context.Context, principal *v2.Resource, entitle
 				zap.String("principal_id", principal.Id.String()),
 				zap.String("principal_type", principal.Id.ResourceType),
 			)
-			return nil, fmt.Errorf("bitbucket(dc)-connector: group already has this repository permission")
+			return nil, fmt.Errorf("bitbucket(dc)-connector: group %s already has this repository permission", principal.DisplayName)
 		}
 
 		err = r.client.UpdateGroupRepositoryPermission(ctx,
@@ -391,7 +391,7 @@ func (r *repoBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.
 				zap.String("principal_id", principal.Id.String()),
 				zap.String("principal_type", principal.Id.ResourceType),
 			)
-			return nil, fmt.Errorf("bitbucket(dc)-connector: user doesnt have this repository permission")
+			return nil, fmt.Errorf("bitbucket(dc)-connector: user %s doesnt have this repository permission", principal.DisplayName)
 		}
 
 		err = r.client.RevokeUserRepositoryPermission(ctx, projectKey, repositorySlug, principal.DisplayName)
@@ -420,7 +420,7 @@ func (r *repoBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.
 				zap.String("principal_id", principal.Id.String()),
 				zap.String("principal_type", principal.Id.ResourceType),
 			)
-			return nil, fmt.Errorf("bitbucket(dc)-connector: group doesnt have this repository permission")
+			return nil, fmt.Errorf("bitbucket(dc)-connector: group %s doesnt have this repository permission", principal.DisplayName)
 		}
 
 		err = r.client.RevokeGroupRepositoryPermission(ctx, projectKey, repositorySlug, principal.DisplayName)

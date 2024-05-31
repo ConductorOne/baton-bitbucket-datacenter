@@ -276,7 +276,7 @@ func (p *projectBuilder) Grant(ctx context.Context, principal *v2.Resource, enti
 				zap.String("principal_id", principal.Id.String()),
 				zap.String("principal_type", principal.Id.ResourceType),
 			)
-			return nil, fmt.Errorf("bitbucket(dc)-connector: user already has this project permission")
+			return nil, fmt.Errorf("bitbucket(dc)-connector: user %s already has this project permission", principal.DisplayName)
 		}
 
 		err = p.client.UpdateUserProjectPermission(ctx, projectKey, principal.DisplayName, permission)
@@ -305,7 +305,7 @@ func (p *projectBuilder) Grant(ctx context.Context, principal *v2.Resource, enti
 				zap.String("principal_id", principal.Id.String()),
 				zap.String("principal_type", principal.Id.ResourceType),
 			)
-			return nil, fmt.Errorf("bitbucket(dc)-connector: group already has this project permission")
+			return nil, fmt.Errorf("bitbucket(dc)-connector: group %s already has this project permission", principal.DisplayName)
 		}
 
 		err = p.client.UpdateGroupProjectPermission(ctx, projectKey, principal.DisplayName, permission)
@@ -385,7 +385,7 @@ func (p *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotatio
 				zap.String("principal_id", principal.Id.String()),
 				zap.String("principal_type", principal.Id.ResourceType),
 			)
-			return nil, fmt.Errorf("bitbucket(dc)-connector: user doesn't have this project permission")
+			return nil, fmt.Errorf("bitbucket(dc)-connector: user %s doesn't have this project permission", principal.DisplayName)
 		}
 
 		err = p.client.RevokeUserProjectPermission(ctx, projectKey, principal.DisplayName)
@@ -414,7 +414,7 @@ func (p *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotatio
 				zap.String("principal_id", principal.Id.String()),
 				zap.String("principal_type", principal.Id.ResourceType),
 			)
-			return nil, fmt.Errorf("bitbucket(dc)-connector: group doesn't have this project permission")
+			return nil, fmt.Errorf("bitbucket(dc)-connector: group %s doesn't have this project permission", principal.DisplayName)
 		}
 
 		err = p.client.RevokeGroupProjectPermission(ctx, projectKey, principal.DisplayName)

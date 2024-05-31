@@ -231,16 +231,6 @@ func ParseEntitlementID(id string) (*v2.ResourceId, []string, error) {
 	return resourceId, parts, nil
 }
 
-func ParseEntitlementIDV2(id string) ([]string, error) {
-	parts := strings.Split(id, ":")
-	// Need to be at least 3 parts type:entitlement_id:slug
-	if len(parts) < 3 || len(parts) > 3 {
-		return nil, fmt.Errorf("bitbucket(dc)-connector: invalid resource id")
-	}
-
-	return parts, nil
-}
-
 func listGlobalUserPermissions(ctx context.Context, cli *client.DataCenterClient) ([]client.UsersPermissions, error) {
 	var (
 		page           int
