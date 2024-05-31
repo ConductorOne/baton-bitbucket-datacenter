@@ -12,7 +12,6 @@ import (
 	"github.com/conductorone/baton-sdk/pkg/pagination"
 	ent "github.com/conductorone/baton-sdk/pkg/types/entitlement"
 	"github.com/conductorone/baton-sdk/pkg/types/grant"
-	rs "github.com/conductorone/baton-sdk/pkg/types/resource"
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
 	"go.uber.org/zap"
 )
@@ -114,14 +113,12 @@ func (p *projectBuilder) Entitlements(_ context.Context, resource *v2.Resource, 
 
 func (p *projectBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
 	var (
-		pageToken         int
-		err               error
-		rv                []*v2.Grant
-		projectKey        string
-		ok                bool
-		nextPageToken     string
-		usersPermissions  []client.UsersPermissions
-		groupsPermissions []client.GroupsPermissions
+		pageToken                 int
+		err                       error
+		rv                        []*v2.Grant
+		projectKey, nextPageToken string
+		usersPermissions          []client.UsersPermissions
+		groupsPermissions         []client.GroupsPermissions
 	)
 	_, bag, err := unmarshalSkipToken(pToken)
 	if err != nil {
@@ -145,13 +142,14 @@ func (p *projectBuilder) Grants(ctx context.Context, resource *v2.Resource, pTok
 		}
 	}
 
-	groupTrait, err := rs.GetGroupTrait(resource)
+	projectId, err := strconv.Atoi(resource.Id.Resource)
 	if err != nil {
 		return nil, "", nil, err
 	}
 
-	if projectKey, ok = rs.GetProfileStringValue(groupTrait.Profile, "project_key"); !ok {
-		return nil, "", nil, fmt.Errorf("project_key not found")
+	projectKey, err = getProjectKey(ctx, p, projectId)
+	if err != nil {
+		return nil, "", nil, err
 	}
 
 	switch bag.ResourceTypeID() {
@@ -224,10 +222,7 @@ func (p *projectBuilder) Grants(ctx context.Context, resource *v2.Resource, pTok
 }
 
 func (p *projectBuilder) Grant(ctx context.Context, principal *v2.Resource, entitlement *v2.Entitlement) (annotations.Annotations, error) {
-	var (
-		projectKey, permission string
-		ok                     bool
-	)
+	var projectKey, permission string
 	l := ctxzap.Extract(ctx)
 	if principal.Id.ResourceType != resourceTypeUser.Id && principal.Id.ResourceType != resourceTypeGroup.Id {
 		l.Warn(
@@ -250,13 +245,14 @@ func (p *projectBuilder) Grant(ctx context.Context, principal *v2.Resource, enti
 		return nil, fmt.Errorf("bitbucket(dc) connector: invalid permission type: %s", permissions[len(permissions)-1])
 	}
 
-	groupTrait, err := rs.GetGroupTrait(entitlement.Resource)
+	projectId, err := strconv.Atoi(entitlement.Resource.Id.Resource)
 	if err != nil {
 		return nil, err
 	}
 
-	if projectKey, ok = rs.GetProfileStringValue(groupTrait.Profile, "project_key"); !ok {
-		return nil, fmt.Errorf("project_key not found")
+	projectKey, err = getProjectKey(ctx, p, projectId)
+	if err != nil {
+		return nil, err
 	}
 
 	switch principal.Id.ResourceType {
@@ -280,7 +276,7 @@ func (p *projectBuilder) Grant(ctx context.Context, principal *v2.Resource, enti
 				zap.String("principal_id", principal.Id.String()),
 				zap.String("principal_type", principal.Id.ResourceType),
 			)
-			return nil, fmt.Errorf("bitbucket(dc)-connector: user already has this project permission")
+			return nil, fmt.Errorf("bitbucket(dc)-connector: user %s already has this project permission", principal.DisplayName)
 		}
 
 		err = p.client.UpdateUserProjectPermission(ctx, projectKey, principal.DisplayName, permission)
@@ -309,7 +305,7 @@ func (p *projectBuilder) Grant(ctx context.Context, principal *v2.Resource, enti
 				zap.String("principal_id", principal.Id.String()),
 				zap.String("principal_type", principal.Id.ResourceType),
 			)
-			return nil, fmt.Errorf("bitbucket(dc)-connector: group already has this project permission")
+			return nil, fmt.Errorf("bitbucket(dc)-connector: group %s already has this project permission", principal.DisplayName)
 		}
 
 		err = p.client.UpdateGroupProjectPermission(ctx, projectKey, principal.DisplayName, permission)
@@ -329,12 +325,8 @@ func (p *projectBuilder) Grant(ctx context.Context, principal *v2.Resource, enti
 	return nil, nil
 }
 
-func (g *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.Annotations, error) {
-	var (
-		projectKey, permission string
-		ok                     bool
-		repositorySlug         string
-	)
+func (p *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.Annotations, error) {
+	var projectKey, repositorySlug, permission string
 	l := ctxzap.Extract(ctx)
 	principal := grant.Principal
 	entitlement := grant.Entitlement
@@ -362,13 +354,14 @@ func (g *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotatio
 		return nil, fmt.Errorf("bitbucket(dc) connector: invalid permission type: %s", permissions[len(permissions)-1])
 	}
 
-	groupTrait, err := rs.GetGroupTrait(entitlement.Resource)
+	projectId, err := strconv.Atoi(entitlement.Resource.Id.Resource)
 	if err != nil {
 		return nil, err
 	}
 
-	if projectKey, ok = rs.GetProfileStringValue(groupTrait.Profile, "project_key"); !ok {
-		return nil, fmt.Errorf("project_key not found")
+	projectKey, err = getProjectKey(ctx, p, projectId)
+	if err != nil {
+		return nil, err
 	}
 
 	switch principal.Id.ResourceType {
@@ -378,7 +371,7 @@ func (g *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotatio
 			return nil, err
 		}
 
-		listUser, err := listUserProjectsPermissions(ctx, g.client, projectKey)
+		listUser, err := listUserProjectsPermissions(ctx, p.client, projectKey)
 		if err != nil {
 			return nil, err
 		}
@@ -392,10 +385,10 @@ func (g *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotatio
 				zap.String("principal_id", principal.Id.String()),
 				zap.String("principal_type", principal.Id.ResourceType),
 			)
-			return nil, fmt.Errorf("bitbucket(dc)-connector: user doesn't have this project permission")
+			return nil, fmt.Errorf("bitbucket(dc)-connector: user %s doesn't have this project permission", principal.DisplayName)
 		}
 
-		err = g.client.RevokeUserProjectPermission(ctx, projectKey, principal.DisplayName)
+		err = p.client.RevokeUserProjectPermission(ctx, projectKey, principal.DisplayName)
 		if err != nil {
 			return nil, fmt.Errorf("bitbucket(dc)-connector: failed to remove repository user permission: %w", err)
 		}
@@ -407,7 +400,7 @@ func (g *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotatio
 			zap.String("RepositorySlug", repositorySlug),
 		)
 	case resourceTypeGroup.Id:
-		listGroup, err := listGroupProjectsPermissions(ctx, g.client, projectKey)
+		listGroup, err := listGroupProjectsPermissions(ctx, p.client, projectKey)
 		if err != nil {
 			return nil, err
 		}
@@ -421,10 +414,10 @@ func (g *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotatio
 				zap.String("principal_id", principal.Id.String()),
 				zap.String("principal_type", principal.Id.ResourceType),
 			)
-			return nil, fmt.Errorf("bitbucket(dc)-connector: group doesn't have this project permission")
+			return nil, fmt.Errorf("bitbucket(dc)-connector: group %s doesn't have this project permission", principal.DisplayName)
 		}
 
-		err = g.client.RevokeGroupProjectPermission(ctx, projectKey, principal.DisplayName)
+		err = p.client.RevokeGroupProjectPermission(ctx, projectKey, principal.DisplayName)
 		if err != nil {
 			return nil, fmt.Errorf("bitbucket(dc)-connector: failed to remove repository group permission: %w", err)
 		}

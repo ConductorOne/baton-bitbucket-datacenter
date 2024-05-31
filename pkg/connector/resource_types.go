@@ -25,6 +25,9 @@ var (
 	resourceTypeRepository = &v2.ResourceType{
 		Id:          "repository",
 		DisplayName: "Repository",
+		Traits: []v2.ResourceType_Trait{
+			v2.ResourceType_TRAIT_GROUP,
+		},
 	}
 	resourceTypeGroup = &v2.ResourceType{
 		Id:          "group",

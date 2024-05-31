@@ -3,6 +3,7 @@ package connector
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -424,4 +425,94 @@ func listGroupProjectsPermissions(ctx context.Context, cli *client.DataCenterCli
 	}
 
 	return lstPermissions, nil
+}
+
+func listProjects(ctx context.Context, cli *client.DataCenterClient) ([]client.Projects, error) {
+	var (
+		page        int
+		lstProjects []client.Projects
+	)
+	for {
+		projects, nextPageToken, err := cli.ListProjects(ctx, client.PageOptions{
+			PerPage: ITEMSPERPAGE,
+			Page:    page,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		lstProjects = append(lstProjects, projects...)
+		if nextPageToken == "" {
+			break
+		}
+
+		page, err = strconv.Atoi(nextPageToken)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return lstProjects, nil
+}
+
+func getProjectKey(ctx context.Context, p *projectBuilder, projectId int) (string, error) {
+	projects, err := listProjects(ctx, p.client)
+	if err != nil {
+		return "", err
+	}
+
+	projectPos := slices.IndexFunc(projects, func(c client.Projects) bool {
+		return c.ID == projectId
+	})
+
+	if projectPos == -1 {
+		return "", fmt.Errorf("project key was not found")
+	}
+
+	return projects[projectPos].Key, nil
+}
+
+func listRepositories(ctx context.Context, cli *client.DataCenterClient) ([]client.Repos, error) {
+	var (
+		page     int
+		lstRepos []client.Repos
+	)
+	for {
+		repos, nextPageToken, err := cli.ListRepos(ctx, client.PageOptions{
+			PerPage: ITEMSPERPAGE,
+			Page:    page,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		lstRepos = append(lstRepos, repos...)
+		if nextPageToken == "" {
+			break
+		}
+
+		page, err = strconv.Atoi(nextPageToken)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return lstRepos, nil
+}
+
+func getRepositorySlug(ctx context.Context, r *repoBuilder, repoId int) (string, string, error) {
+	repos, err := listRepositories(ctx, r.client)
+	if err != nil {
+		return "", "", err
+	}
+
+	repoPos := slices.IndexFunc(repos, func(c client.Repos) bool {
+		return c.ID == repoId
+	})
+
+	if repoPos == -1 {
+		return "", "", fmt.Errorf("repository was not found")
+	}
+
+	return repos[repoPos].Project.Key, repos[repoPos].Slug, nil
 }

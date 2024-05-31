@@ -69,8 +69,9 @@ Available Commands:
   help               Help about any command
 
 Flags:
-      --bitbucketdc-baseurl string    Bitbucket Data Center server. example http://localhost:7990. ($BATON_BITBUCKETDC_BASE_URL)
+      --bitbucketdc-baseurl string    Bitbucket Data Center server. example http://localhost:7990. defaultValue: http://localhost:7990 ($BATON_BITBUCKETDC_BASEURL)
       --bitbucketdc-password string   Application password used to connect to the BitBucket(dc) API. ($BATON_BITBUCKETDC_PASSWORD)
+      --bitbucketdc-token string      HTTP access tokens in Bitbucket Data Center. ($BATON_BITBUCKETDC_TOKEN)
       --bitbucketdc-username string   Username of administrator used to connect to the BitBucket(dc) API. ($BATON_BITBUCKETDC_USERNAME)
       --client-id string              The client ID used to authenticate with ConductorOne ($BATON_CLIENT_ID)
       --client-secret string          The client secret used to authenticate with ConductorOne ($BATON_CLIENT_SECRET)
@@ -79,6 +80,7 @@ Flags:
       --log-format string             The output format for logs: json, console ($BATON_LOG_FORMAT) (default "json")
       --log-level string              The log level: debug, info, warn, error ($BATON_LOG_LEVEL) (default "info")
   -p, --provisioning                  This must be set in order for provisioning actions to be enabled. ($BATON_PROVISIONING)
+      --ticketing                     This must be set to enable ticketing support ($BATON_TICKETING)
   -v, --version                       version for baton-bitbucket-datacenter
 
 Use "baton-bitbucket-datacenter [command] --help" for more information about a command.

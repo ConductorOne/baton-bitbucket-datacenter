@@ -20,6 +20,20 @@ type DataCenterClient struct {
 	baseUrl    string
 }
 
+type BitbucketError struct {
+	ErrorMessage     string                   `json:"error"`
+	ErrorDescription string                   `json:"error_description"`
+	ErrorCode        int                      `json:"errorCode,omitempty"`
+	ErrorSummary     string                   `json:"errorSummary,omitempty" toml:"error_description"`
+	ErrorLink        string                   `json:"errorLink,omitempty"`
+	ErrorId          string                   `json:"errorId,omitempty"`
+	ErrorCauses      []map[string]interface{} `json:"errorCauses,omitempty"`
+}
+
+func (b *BitbucketError) Error() string {
+	return b.ErrorMessage
+}
+
 // GET - http://{baseurl}/rest/api/latest/users
 // GET - http://{baseurl}/rest/api/latest/projects
 // GET - http://{baseurl}/rest/api/latest/admin/groups
@@ -120,11 +134,23 @@ func (d *DataCenterClient) getPWD() string {
 }
 
 func (d *DataCenterClient) CheckCredentials() bool {
-	if (d.getUser() != "" && d.getPWD() != "") || d.getToken() != "" {
+	if d.IsBasicAuthentication() || d.getToken() != "" {
 		return true
 	}
 
 	return false
+}
+
+func (d *DataCenterClient) IsBasicAuthentication() bool {
+	if d.getUser() != "" && d.getPWD() != "" {
+		return true
+	}
+
+	return false
+}
+
+func (d *DataCenterClient) IsTokenAuthentication() bool {
+	return d.getPWD() != ""
 }
 
 func isValidUrl(baseUrl string) bool {
@@ -541,7 +567,13 @@ func (d *DataCenterClient) GetGlobalUserPermissions(ctx context.Context, startPa
 
 	resp, err := d.httpClient.Do(req, uhttp.WithJSONResponse(&permissionsData))
 	if err != nil {
-		return nil, Page{}, fmt.Errorf("%s %v", err.Error(), resp.Body)
+		return nil, Page{}, &BitbucketError{
+			ErrorMessage:     err.Error(),
+			ErrorDescription: err.Error(),
+			ErrorCode:        resp.StatusCode,
+			ErrorSummary:     fmt.Sprint(resp.Body),
+			ErrorLink:        resp.Status,
+		}
 	}
 
 	defer resp.Body.Close()
@@ -591,7 +623,12 @@ func (d *DataCenterClient) GetGlobalGroupPermissions(ctx context.Context, startP
 
 	resp, err := d.httpClient.Do(req, uhttp.WithJSONResponse(&permissionsData))
 	if err != nil {
-		return nil, Page{}, err
+		return nil, Page{}, &BitbucketError{
+			ErrorMessage:     err.Error(),
+			ErrorDescription: err.Error(),
+			ErrorCode:        resp.StatusCode,
+			ErrorSummary:     fmt.Sprint(resp.Body),
+		}
 	}
 
 	defer resp.Body.Close()
@@ -615,7 +652,7 @@ func (d *DataCenterClient) ListGlobalUserPermissions(ctx context.Context, opts P
 		strconv.Itoa(opts.PerPage),
 	)
 	if err != nil {
-		return usersPermissions, "", err
+		return []UsersPermissions{}, "", err
 	}
 
 	if page.HasNext() {
