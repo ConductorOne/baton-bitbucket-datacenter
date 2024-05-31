@@ -280,13 +280,15 @@ func (g *groupBuilder) Grant(ctx context.Context, principal *v2.Resource, entitl
 
 	switch principal.Id.ResourceType {
 	case resourceTypeUser.Id:
+		userName := principal.DisplayName
+		groupName := groupResourceId.Resource
 		userId, err := strconv.Atoi(principal.Id.Resource)
 		if err != nil {
 			return nil, err
 		}
 
 		// Check if user is already a member of the group
-		listGroups, err := listGroupMembers(ctx, g.client, groupResourceId.Resource)
+		listGroups, err := listGroupMembers(ctx, g.client, groupName)
 		if err != nil {
 			return nil, fmt.Errorf("bitbucket(dc)-connector: failed to get group members: %w", err)
 		}
@@ -304,15 +306,15 @@ func (g *groupBuilder) Grant(ctx context.Context, principal *v2.Resource, entitl
 		}
 
 		// Add user to the group
-		err = g.client.AddUserToGroups(ctx, groupResourceId.Resource, principal.DisplayName)
+		err = g.client.AddUserToGroups(ctx, groupName, userName)
 		if err != nil {
 			return nil, fmt.Errorf("bitbucket(dc)-connector: failed to add user to group: %w", err)
 		}
 
 		l.Warn("Membership has been created.",
 			zap.Int64("UserID", int64(userId)),
-			zap.String("User", principal.DisplayName),
-			zap.String("Group", groupResourceId.Resource),
+			zap.String("User", userName),
+			zap.String("Group", groupName),
 		)
 
 	case resourceTypeGroup.Id:
