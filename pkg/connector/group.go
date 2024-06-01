@@ -145,11 +145,11 @@ func (g *groupBuilder) Entitlements(ctx context.Context, resource *v2.Resource, 
 
 func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
 	var (
-		pageToken                       int
-		err                             error
-		rv                              []*v2.Grant
-		userPermission, groupPermission string
-		bitbucketErr                    *client.BitbucketError
+		pageToken                                      int
+		err                                            error
+		rv                                             []*v2.Grant
+		userPermission, groupPermission, nextPageToken string
+		bitbucketErr                                   *client.BitbucketError
 	)
 	_, bag, err := unmarshalSkipToken(pToken)
 	if err != nil {
@@ -157,8 +157,12 @@ func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 	}
 
 	if bag.Current() == nil {
+		// Push onto stack in reverse
 		bag.Push(pagination.PageState{
-			ResourceTypeID: resourceTypeGroup.Id,
+			ResourceTypeID: resourceTypeProject.Id,
+		})
+		bag.Push(pagination.PageState{
+			ResourceTypeID: resourceTypeUser.Id,
 		})
 	}
 
@@ -169,83 +173,129 @@ func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 		}
 	}
 
-	// Get user permissions
-	userPermissions, err := listGlobalUserPermissions(ctx, g.client)
-	if err != nil {
-		switch {
-		case errors.As(err, &bitbucketErr):
-			if bitbucketErr.ErrorCode != http.StatusUnauthorized {
-				return nil, "", nil, fmt.Errorf("%s", bitbucketErr.Error())
-			}
-		default:
-			return nil, "", nil, err
-		}
-	}
-
-	// Get group permissions
-	groupPermissions, err := listGlobalGroupPermissions(ctx, g.client)
-	if err != nil {
-		switch {
-		case errors.As(err, &bitbucketErr):
-			if bitbucketErr.ErrorCode != http.StatusUnauthorized {
-				return nil, "", nil, fmt.Errorf("%s", bitbucketErr.Error())
-			}
-		default:
-			return nil, "", nil, err
-		}
-	}
-
-	groupPos := slices.IndexFunc(groupPermissions, func(c client.GroupsPermissions) bool {
-		return c.Group.Name == resource.Id.Resource
-	})
-	if groupPos != NF {
-		groupPermission = groupPermissions[groupPos].Permission
-	}
-
-	groupMembers, nextPageToken, err := g.client.ListGroupMembers(ctx, client.PageOptions{
-		PerPage: ITEMSPERPAGE,
-		Page:    pageToken,
-	}, resource.Id.Resource)
-	if err != nil {
-		return nil, "", nil, err
-	}
-
-	err = bag.Next(nextPageToken)
-	if err != nil {
-		return nil, "", nil, err
-	}
-
-	for _, member := range groupMembers {
-		usrCppy := member
-		userPermission = "LICENSED_USER"
-		ur, err := userResource(ctx, &client.Users{
-			Name:         usrCppy.Name,
-			EmailAddress: usrCppy.EmailAddress,
-			Active:       usrCppy.Active,
-			DisplayName:  usrCppy.DisplayName,
-			ID:           usrCppy.ID,
-			Slug:         usrCppy.Slug,
-			Type:         usrCppy.Type,
-		}, resource.Id)
-		if err != nil {
-			return nil, "", nil, fmt.Errorf("error creating user resource for group %s: %w", resource.Id.Resource, err)
-		}
-
-		userPos := slices.IndexFunc(userPermissions, func(c client.UsersPermissions) bool {
-			return c.User.ID == usrCppy.ID
+	groupName := resource.Id.Resource
+	switch bag.ResourceTypeID() {
+	case resourceTypeProject.Id:
+		projects, nextPageToken, err := g.client.ListProjects(ctx, client.PageOptions{
+			PerPage: ITEMSPERPAGE,
+			Page:    pageToken,
 		})
-		if userPos != NF {
-			userPermission = userPermissions[userPos].Permission
+		if err != nil {
+			return nil, "", nil, err
 		}
 
-		if userPermission == groupPermission {
+		err = bag.Next(nextPageToken)
+		if err != nil {
+			return nil, "", nil, err
+		}
+
+		for _, project := range projects {
+			projectKey := project.Key
+			// Get group permissions
+			listGroup, err := listGroupProjectsPermissions(ctx, g.client, projectKey)
+			if err != nil {
+				return nil, "", nil, err
+			}
+
+			groupPos := slices.IndexFunc(listGroup, func(c client.GroupsPermissions) bool {
+				return c.Group.Name == groupName
+			})
+			if groupPos != NF {
+				ur, err := projectResource(ctx, &client.Projects{
+					Key:  projectKey,
+					ID:   project.ID,
+					Name: project.Name,
+					Type: project.Type,
+				}, resource.Id)
+				if err != nil {
+					return nil, "", nil, err
+				}
+
+				membershipGrant := grant.NewGrant(resource, listGroup[groupPos].Permission, ur.Id)
+				rv = append(rv, membershipGrant)
+			}
+		}
+	case resourceTypeUser.Id:
+		// Get user permissions
+		userPermissions, err := listGlobalUserPermissions(ctx, g.client)
+		if err != nil {
+			switch {
+			case errors.As(err, &bitbucketErr):
+				if bitbucketErr.ErrorCode != http.StatusUnauthorized {
+					return nil, "", nil, fmt.Errorf("%s", bitbucketErr.Error())
+				}
+			default:
+				return nil, "", nil, err
+			}
+		}
+
+		// Get group permissions
+		groupPermissions, err := listGlobalGroupPermissions(ctx, g.client)
+		if err != nil {
+			switch {
+			case errors.As(err, &bitbucketErr):
+				if bitbucketErr.ErrorCode != http.StatusUnauthorized {
+					return nil, "", nil, fmt.Errorf("%s", bitbucketErr.Error())
+				}
+			default:
+				return nil, "", nil, err
+			}
+		}
+
+		groupPos := slices.IndexFunc(groupPermissions, func(c client.GroupsPermissions) bool {
+			return c.Group.Name == resource.Id.Resource
+		})
+		if groupPos != NF {
+			groupPermission = groupPermissions[groupPos].Permission
+		}
+
+		groupMembers, nextPageToken, err := g.client.ListGroupMembers(ctx, client.PageOptions{
+			PerPage: ITEMSPERPAGE,
+			Page:    pageToken,
+		}, groupName)
+		if err != nil {
+			return nil, "", nil, err
+		}
+
+		err = bag.Next(nextPageToken)
+		if err != nil {
+			return nil, "", nil, err
+		}
+
+		for _, member := range groupMembers {
+			usrCppy := member
+			userPermission = "LICENSED_USER"
+			ur, err := userResource(ctx, &client.Users{
+				Name:         usrCppy.Name,
+				EmailAddress: usrCppy.EmailAddress,
+				Active:       usrCppy.Active,
+				DisplayName:  usrCppy.DisplayName,
+				ID:           usrCppy.ID,
+				Slug:         usrCppy.Slug,
+				Type:         usrCppy.Type,
+			}, resource.Id)
+			if err != nil {
+				return nil, "", nil, fmt.Errorf("error creating user resource for group %s: %w", groupName, err)
+			}
+
+			userPos := slices.IndexFunc(userPermissions, func(c client.UsersPermissions) bool {
+				return c.User.ID == usrCppy.ID
+			})
+			if userPos != NF {
+				userPermission = userPermissions[userPos].Permission
+			}
+
+			if userPermission == groupPermission {
+				membershipGrant := grant.NewGrant(resource, userPermission, ur.Id)
+				rv = append(rv, membershipGrant)
+				continue
+			}
+
 			membershipGrant := grant.NewGrant(resource, userPermission, ur.Id)
 			rv = append(rv, membershipGrant)
-			continue
 		}
-
-		membershipGrant := grant.NewGrant(resource, userPermission, ur.Id)
-		rv = append(rv, membershipGrant)
+	default:
+		return nil, "", nil, fmt.Errorf("bitbucket(dc) connector: invalid grant resource type: %s", bag.ResourceTypeID())
 	}
 
 	nextPageToken, err = bag.Marshal()
@@ -441,7 +491,7 @@ func (g *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations
 			return nil, fmt.Errorf("bitbucket(dc)-connector: failed to remove user from group: %w", err)
 		}
 
-		l.Warn("Membership has been removed.",
+		l.Warn("Membership has been revoked.",
 			zap.Int64("UserID", int64(userId)),
 			zap.String("User", userName),
 			zap.String("Group", groupName),
@@ -499,7 +549,7 @@ func (g *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations
 			}
 		}
 
-		l.Warn("Project Membership has been created.",
+		l.Warn("Project Membership has been revokef.",
 			zap.String("GroupName", groupName),
 			zap.String("ProjectKey", projectKey),
 			zap.String("Permission", permission),
