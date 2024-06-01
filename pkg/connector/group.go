@@ -159,6 +159,9 @@ func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 	if bag.Current() == nil {
 		// Push onto stack in reverse
 		bag.Push(pagination.PageState{
+			ResourceTypeID: resourceTypeRepository.Id,
+		})
+		bag.Push(pagination.PageState{
 			ResourceTypeID: resourceTypeProject.Id,
 		})
 		bag.Push(pagination.PageState{
@@ -175,6 +178,52 @@ func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 
 	groupName := resource.Id.Resource
 	switch bag.ResourceTypeID() {
+	case resourceTypeRepository.Id:
+		repos, nextPageToken, err := g.client.ListRepos(ctx, client.PageOptions{
+			PerPage: ITEMSPERPAGE,
+			Page:    pageToken,
+		})
+		if err != nil {
+			return nil, "", nil, err
+		}
+
+		for _, repo := range repos {
+			projectKey := repo.Project.Key
+			permission, groupPos, err := getGroupProjectsPermissionsPosition(ctx, g.client, projectKey, groupName)
+			if err != nil {
+				return nil, "", nil, err
+			}
+
+			if groupPos != NF {
+				ur, err := repositoryResource(ctx, &client.Repos{
+					Slug:          repo.Slug,
+					ID:            repo.ID,
+					Name:          repo.Name,
+					HierarchyId:   repo.HierarchyId,
+					ScmId:         repo.ScmId,
+					State:         repo.State,
+					StatusMessage: repo.StatusMessage,
+					Project: client.Projects{
+						Key:  repo.Project.Key,
+						ID:   repo.Project.ID,
+						Name: repo.Project.Name,
+						Type: repo.Project.Type,
+					},
+				}, resource.Id)
+				if err != nil {
+					return nil, "", nil, err
+				}
+
+				membershipGrant := grant.NewGrant(resource, permission, ur.Id)
+				rv = append(rv, membershipGrant)
+			}
+		}
+
+		err = bag.Next(nextPageToken)
+		if err != nil {
+			return nil, "", nil, err
+		}
+		// add project code and check group on projects then just check group
 	case resourceTypeProject.Id:
 		projects, nextPageToken, err := g.client.ListProjects(ctx, client.PageOptions{
 			PerPage: ITEMSPERPAGE,
@@ -192,14 +241,11 @@ func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 		for _, project := range projects {
 			projectKey := project.Key
 			// Get group permissions
-			listGroup, err := listGroupProjectsPermissions(ctx, g.client, projectKey)
+			permission, groupPos, err := getGroupProjectsPermissionsPosition(ctx, g.client, projectKey, groupName)
 			if err != nil {
 				return nil, "", nil, err
 			}
 
-			groupPos := slices.IndexFunc(listGroup, func(c client.GroupsPermissions) bool {
-				return c.Group.Name == groupName
-			})
 			if groupPos != NF {
 				ur, err := projectResource(ctx, &client.Projects{
 					Key:  projectKey,
@@ -211,7 +257,7 @@ func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 					return nil, "", nil, err
 				}
 
-				membershipGrant := grant.NewGrant(resource, listGroup[groupPos].Permission, ur.Id)
+				membershipGrant := grant.NewGrant(resource, permission, ur.Id)
 				rv = append(rv, membershipGrant)
 			}
 		}
@@ -366,9 +412,6 @@ func (g *groupBuilder) Grant(ctx context.Context, principal *v2.Resource, entitl
 			zap.String("User", userName),
 			zap.String("Group", groupName),
 		)
-
-	case resourceTypeGroup.Id:
-
 	case resourceTypeRepository.Id:
 
 	case resourceTypeProject.Id:
@@ -459,10 +502,10 @@ func (g *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations
 		return nil, err
 	}
 
+	groupName := groupResourceId.Resource
 	switch principal.Id.ResourceType {
 	case resourceTypeUser.Id:
 		userName := principal.DisplayName
-		groupName := groupResourceId.Resource
 		userId, err := strconv.Atoi(principal.Id.Resource)
 		if err != nil {
 			return nil, err
@@ -499,7 +542,6 @@ func (g *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations
 	case resourceTypeRepository.Id:
 
 	case resourceTypeProject.Id:
-		groupName := entitlement.Resource.Id.Resource
 		_, permissions, err := ParseEntitlementID(entitlement.Id)
 		if err != nil {
 			return nil, err

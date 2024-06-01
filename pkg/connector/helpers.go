@@ -533,9 +533,26 @@ func getRepositorySlug(ctx context.Context, r *repoBuilder, repoId int) (string,
 		return c.ID == repoId
 	})
 
-	if repoPos == -1 {
+	if repoPos == NF {
 		return "", "", fmt.Errorf("repository was not found")
 	}
 
 	return repos[repoPos].Project.Key, repos[repoPos].Slug, nil
+}
+
+func getGroupProjectsPermissionsPosition(ctx context.Context, cli *client.DataCenterClient, projectKey, groupName string) (string, int, error) {
+	listGroup, err := listGroupProjectsPermissions(ctx, cli, projectKey)
+	if err != nil {
+		return "", 0, err
+	}
+
+	groupPos := slices.IndexFunc(listGroup, func(c client.GroupsPermissions) bool {
+		return c.Group.Name == groupName
+	})
+
+	if groupPos == NF {
+		return "", groupPos, err
+	}
+
+	return listGroup[groupPos].Permission, groupPos, err
 }
