@@ -98,7 +98,7 @@ jobs:
         run: ./scripts/get-baton.sh && mv baton /usr/local/bin
       - name: Import sql into postgres
         run: |
-          psql -h localhost --user bitbucket -f schema.sql
+          # psql -h localhost --user bitbucket -f schema.sql
           psql -h localhost --user bitbucket -f data.sql
         env:
           PGPASSWORD: ${{ secrets.DB_PASSWORD }}
