@@ -549,7 +549,7 @@ func (g *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations
 			}
 		}
 
-		l.Warn("Project Membership has been revokef.",
+		l.Warn("Project Membership has been revoked.",
 			zap.String("GroupName", groupName),
 			zap.String("ProjectKey", projectKey),
 			zap.String("Permission", permission),
