@@ -343,6 +343,8 @@ func listUserRepositoryPermissions(ctx context.Context, cli *client.DataCenterCl
 	return lstPermissions, nil
 }
 
+// listGroupRepositoryPermissions
+// repositorySlug = name.
 func listGroupRepositoryPermissions(ctx context.Context, cli *client.DataCenterClient, projectKey, repositorySlug string) ([]client.GroupsPermissions, error) {
 	var (
 		page           int

@@ -260,6 +260,7 @@ func (r *repoBuilder) Grant(ctx context.Context, principal *v2.Resource, entitle
 
 	switch principal.Id.ResourceType {
 	case resourceTypeUser.Id:
+		userName := principal.DisplayName
 		userId, err := strconv.Atoi(principal.Id.Resource)
 		if err != nil {
 			return nil, err
@@ -279,13 +280,13 @@ func (r *repoBuilder) Grant(ctx context.Context, principal *v2.Resource, entitle
 				zap.String("principal_id", principal.Id.String()),
 				zap.String("principal_type", principal.Id.ResourceType),
 			)
-			return nil, fmt.Errorf("bitbucket(dc)-connector: user %s already has this repository permission", principal.DisplayName)
+			return nil, fmt.Errorf("bitbucket(dc)-connector: user %s already has this repository permission", userName)
 		}
 
 		err = r.client.UpdateUserRepositoryPermission(ctx,
 			projectKey,
 			repositorySlug,
-			principal.DisplayName,
+			userName,
 			permission,
 		)
 		if err != nil {
@@ -294,18 +295,19 @@ func (r *repoBuilder) Grant(ctx context.Context, principal *v2.Resource, entitle
 
 		l.Warn("User Membership has been created.",
 			zap.Int64("UserID", int64(userId)),
-			zap.String("UserName", principal.DisplayName),
+			zap.String("UserName", userName),
 			zap.String("ProjectKey", projectKey),
 			zap.String("RepositorySlug", repositorySlug),
 		)
 	case resourceTypeGroup.Id:
+		groupName := principal.DisplayName
 		listGroups, err := listGroupRepositoryPermissions(ctx, r.client, projectKey, repositorySlug)
 		if err != nil {
 			return nil, err
 		}
 
 		index := slices.IndexFunc(listGroups, func(c client.GroupsPermissions) bool {
-			return c.Group.Name == principal.DisplayName
+			return c.Group.Name == groupName
 		})
 		if index != NF {
 			l.Warn(
@@ -313,13 +315,13 @@ func (r *repoBuilder) Grant(ctx context.Context, principal *v2.Resource, entitle
 				zap.String("principal_id", principal.Id.String()),
 				zap.String("principal_type", principal.Id.ResourceType),
 			)
-			return nil, fmt.Errorf("bitbucket(dc)-connector: group %s already has this repository permission", principal.DisplayName)
+			return nil, fmt.Errorf("bitbucket(dc)-connector: group %s already has this repository permission", groupName)
 		}
 
 		err = r.client.UpdateGroupRepositoryPermission(ctx,
 			projectKey,
 			repositorySlug,
-			principal.DisplayName,
+			groupName,
 			permission,
 		)
 		if err != nil {
@@ -327,7 +329,7 @@ func (r *repoBuilder) Grant(ctx context.Context, principal *v2.Resource, entitle
 		}
 
 		l.Warn("Group Membership has been created.",
-			zap.String("GroupName", principal.DisplayName),
+			zap.String("GroupName", groupName),
 			zap.String("ProjectKey", projectKey),
 			zap.String("RepositorySlug", repositorySlug),
 		)

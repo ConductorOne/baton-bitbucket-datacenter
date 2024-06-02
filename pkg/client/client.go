@@ -291,7 +291,13 @@ func (d *DataCenterClient) GetProjects(ctx context.Context, startPage, limit str
 
 	resp, err := d.httpClient.Do(req, uhttp.WithJSONResponse(&projectData))
 	if err != nil {
-		return nil, Page{}, err
+		return nil, Page{}, &BitbucketError{
+			ErrorMessage:     err.Error(),
+			ErrorDescription: err.Error(),
+			ErrorCode:        resp.StatusCode,
+			ErrorSummary:     fmt.Sprint(resp.Body),
+			ErrorLink:        resp.Status,
+		}
 	}
 
 	defer resp.Body.Close()
