@@ -8,7 +8,7 @@
 
 wait-for-url() {
   echo -n "Waiting $1 "
-  timeout --foreground -s TERM 10s bash -c \
+  timeout --foreground -s TERM 180s bash -c \
   'while [[ "$(curl -k -s -o /dev/null -m 3 -L -w ''%{http_code}'' ${0})" != "200" ]];\
    do
    echo -n "."
