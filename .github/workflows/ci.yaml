@@ -119,7 +119,7 @@ jobs:
       - name: Revoke grants
         run: |
           ./baton-bitbucket-datacenter --bitbucketdc-username ${{ env.BATON_BITBUCKETDC_USERNAME }} --bitbucketdc-password ${{ env.BATON_BITBUCKETDC_PASSWORD }} --bitbucketdc-baseurl ${{ env.BATON_BITBUCKETDC_BASEURL }} --log-level=debug
-          ./baton-okta --api-token ${{ env.BATON_API_TOKEN }} --domain ${{ env.BATON_DOMAIN }} --revoke-grant ${{ env.CONNECTOR_GRANT }}
+          ./baton-bitbucket-datacenter --bitbucketdc-username ${{ env.BATON_BITBUCKETDC_USERNAME }} --bitbucketdc-password ${{ env.BATON_BITBUCKETDC_PASSWORD }} --bitbucketdc-baseurl ${{ env.BATON_BITBUCKETDC_BASEURL }} --log-level=debug --revoke-grant ${{ env.CONNECTOR_GRANT }}
       - name: Check grant was revoked
         run: |
            ./baton-bitbucket-datacenter --bitbucketdc-username ${{ env.BATON_BITBUCKETDC_USERNAME }} --bitbucketdc-password ${{ env.BATON_BITBUCKETDC_PASSWORD }} --bitbucketdc-baseurl ${{ env.BATON_BITBUCKETDC_BASEURL }} --log-level=debug
@@ -127,7 +127,7 @@ jobs:
       - name: Grant entitlement
         run: | 
           ./baton-bitbucket-datacenter --bitbucketdc-username ${{ env.BATON_BITBUCKETDC_USERNAME }} --bitbucketdc-password ${{ env.BATON_BITBUCKETDC_PASSWORD }} --bitbucketdc-baseurl ${{ env.BATON_BITBUCKETDC_BASEURL }} --log-level=debug
-          ./baton-okta --api-token ${{ env.BATON_API_TOKEN }} --domain ${{ env.BATON_DOMAIN }} --grant-entitlement ${{ env.CONNECTOR_ENTITLEMENT }} --grant-principal ${{ env.CONNECTOR_PRINCIPAL }} --grant-principal-type ${{ env.CONNECTOR_PRINCIPAL_TYPE }}
+          ./baton-bitbucket-datacenter --bitbucketdc-username ${{ env.BATON_BITBUCKETDC_USERNAME }} --bitbucketdc-password ${{ env.BATON_BITBUCKETDC_PASSWORD }} --bitbucketdc-baseurl ${{ env.BATON_BITBUCKETDC_BASEURL }} --log-level=debug --grant-principal ${{ env.CONNECTOR_PRINCIPAL }} --grant-principal-type ${{ env.CONNECTOR_PRINCIPAL_TYPE }}
       - name: Check grant was re-granted
         run: |
           ./baton-bitbucket-datacenter --bitbucketdc-username ${{ env.BATON_BITBUCKETDC_USERNAME }} --bitbucketdc-password ${{ env.BATON_BITBUCKETDC_PASSWORD }} --bitbucketdc-baseurl ${{ env.BATON_BITBUCKETDC_BASEURL }} --log-level=debug
