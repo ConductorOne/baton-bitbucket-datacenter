@@ -197,12 +197,16 @@ func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 
 		for _, repo := range repos {
 			projectKey := repo.Project.Key
-			permission, groupPos, err := getGroupProjectsPermissionsPosition(ctx, g.client, projectKey, groupName)
+			repositorySlug := repo.Slug
+			groupRepositoryPermissions, err := listGroupRepositoryPermissions(ctx, g.client, projectKey, repositorySlug)
 			if err != nil {
 				return nil, "", nil, err
 			}
 
-			if groupPos != NF {
+			groupsPermissionsPos := slices.IndexFunc(groupRepositoryPermissions, func(c client.GroupsPermissions) bool {
+				return c.Group.Name == groupName
+			})
+			if groupsPermissionsPos != NF {
 				ur, err := repositoryResource(ctx, &client.Repos{
 					Slug:          repo.Slug,
 					ID:            repo.ID,
@@ -222,7 +226,7 @@ func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 					return nil, "", nil, err
 				}
 
-				membershipGrant := grant.NewGrant(resource, permission, ur.Id)
+				membershipGrant := grant.NewGrant(resource, groupRepositoryPermissions[groupsPermissionsPos].Permission, ur.Id)
 				rv = append(rv, membershipGrant)
 			}
 		}
@@ -249,7 +253,7 @@ func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 		for _, project := range projects {
 			projectKey := project.Key
 			// Get group permissions
-			permission, groupPos, err := getGroupProjectsPermissionsPosition(ctx, g.client, projectKey, groupName)
+			groupProjectsPermission, groupPos, err := getGroupProjectsPermission(ctx, g.client, projectKey, groupName)
 			if err != nil {
 				return nil, "", nil, err
 			}
@@ -265,7 +269,7 @@ func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 					return nil, "", nil, err
 				}
 
-				membershipGrant := grant.NewGrant(resource, permission, ur.Id)
+				membershipGrant := grant.NewGrant(resource, groupProjectsPermission, ur.Id)
 				rv = append(rv, membershipGrant)
 			}
 		}

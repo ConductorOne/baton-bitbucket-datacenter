@@ -542,7 +542,7 @@ func getRepositorySlug(ctx context.Context, r *repoBuilder, repoId int) (string,
 	return repos[repoPos].Project.Key, repos[repoPos].Slug, nil
 }
 
-func getGroupProjectsPermissionsPosition(ctx context.Context, cli *client.DataCenterClient, projectKey, groupName string) (string, int, error) {
+func getGroupProjectsPermission(ctx context.Context, cli *client.DataCenterClient, projectKey, groupName string) (string, int, error) {
 	listGroup, err := listGroupProjectsPermissions(ctx, cli, projectKey)
 	if err != nil {
 		return "", 0, err

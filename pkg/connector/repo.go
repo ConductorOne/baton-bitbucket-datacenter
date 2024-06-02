@@ -276,12 +276,12 @@ func (r *repoBuilder) Grant(ctx context.Context, principal *v2.Resource, entitle
 			return nil, err
 		}
 
-		listUsers, err := listUserRepositoryPermissions(ctx, r.client, projectKey, repositorySlug)
+		userRepositoryPermissions, err := listUserRepositoryPermissions(ctx, r.client, projectKey, repositorySlug)
 		if err != nil {
 			return nil, err
 		}
 
-		index := slices.IndexFunc(listUsers, func(c client.UsersPermissions) bool {
+		index := slices.IndexFunc(userRepositoryPermissions, func(c client.UsersPermissions) bool {
 			return c.User.ID == userId
 		})
 		if index != NF {
@@ -311,15 +311,15 @@ func (r *repoBuilder) Grant(ctx context.Context, principal *v2.Resource, entitle
 		)
 	case resourceTypeGroup.Id:
 		groupName := principal.DisplayName
-		listGroups, err := listGroupRepositoryPermissions(ctx, r.client, projectKey, repositorySlug)
+		groupRepositoryPermissions, err := listGroupRepositoryPermissions(ctx, r.client, projectKey, repositorySlug)
 		if err != nil {
 			return nil, err
 		}
 
-		index := slices.IndexFunc(listGroups, func(c client.GroupsPermissions) bool {
+		groupsPermissionsPos := slices.IndexFunc(groupRepositoryPermissions, func(c client.GroupsPermissions) bool {
 			return c.Group.Name == groupName
 		})
-		if index != NF {
+		if groupsPermissionsPos != NF {
 			l.Warn(
 				"bitbucket(dc)-connector: group already has this repository permission",
 				zap.String("principal_id", principal.Id.String()),
