@@ -365,8 +365,8 @@ func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 
 func (g *groupBuilder) Grant(ctx context.Context, principal *v2.Resource, entitlement *v2.Entitlement) (annotations.Annotations, error) {
 	var (
-		projectKey, permission string
-		bitbucketErr           *client.BitbucketError
+		projectKey, permission, repositorySlug string
+		bitbucketErr                           *client.BitbucketError
 	)
 	l := ctxzap.Extract(ctx)
 	if principal.Id.ResourceType != resourceTypeUser.Id &&
@@ -419,58 +419,75 @@ func (g *groupBuilder) Grant(ctx context.Context, principal *v2.Resource, entitl
 			zap.String("Group", groupName),
 		)
 	case resourceTypeRepository.Id:
-		groupName := principal.DisplayName
-		projectId, err := strconv.Atoi(principal.Id.Resource)
+		groupName := entitlement.Resource.Id.Resource
+		_, permissions, err := ParseEntitlementID(entitlement.Id)
 		if err != nil {
 			return nil, err
 		}
 
-		projectKey, err = getProjectKey(ctx, g, projectId)
+		switch permissions[len(permissions)-1] {
+		case roleRepoWrite, roleRepoAdmin, roleRepoRead:
+			permission = permissions[len(permissions)-1]
+		default:
+			return nil, fmt.Errorf("bitbucket(dc) connector: invalid permission type: %s", permissions[len(permissions)-1])
+		}
+
+		repoId, err := strconv.Atoi(principal.Id.Resource)
 		if err != nil {
 			return nil, err
 		}
 
-		repos, err := listRepositories(ctx, g.client)
+		projectKey, repositorySlug, _, err = getRepositoryData(ctx, g, repoId)
 		if err != nil {
 			return nil, err
 		}
 
-		for _, repo := range repos {
-			repositorySlug := repo.Slug
-			listGroups, err := listGroupRepositoryPermissions(ctx, g.client, projectKey, repositorySlug)
-			if err != nil {
+		groupRepositoryPermissions, err := listGroupRepositoryPermissions(ctx, g.client, projectKey, repositorySlug)
+		if err != nil {
+			switch {
+			case errors.As(err, &bitbucketErr):
+				if bitbucketErr.ErrorCode != http.StatusUnauthorized {
+					return nil, fmt.Errorf("%s", bitbucketErr.Error())
+				}
+			default:
 				return nil, err
 			}
-
-			index := slices.IndexFunc(listGroups, func(c client.GroupsPermissions) bool {
-				return c.Group.Name == groupName
-			})
-			if index != NF {
-				l.Warn(
-					"bitbucket(dc)-connector: group already has this repository permission",
-					zap.String("principal_id", principal.Id.String()),
-					zap.String("principal_type", principal.Id.ResourceType),
-				)
-				return nil, fmt.Errorf("bitbucket(dc)-connector: group %s already has this repository permission", groupName)
-			}
-
-			err = g.client.UpdateGroupRepositoryPermission(ctx,
-				projectKey,
-				repositorySlug,
-				groupName,
-				permission,
-			)
-			if err != nil {
-				return nil, err
-			}
-
-			l.Warn("Group Membership has been created.",
-				zap.String("GroupName", groupName),
-				zap.String("ProjectKey", projectKey),
-				zap.String("RepositorySlug", repositorySlug),
-			)
 		}
 
+		groupRepositoryPermissionPos := slices.IndexFunc(groupRepositoryPermissions, func(c client.GroupsPermissions) bool {
+			return c.Group.Name == groupName
+		})
+		if groupRepositoryPermissionPos != NF {
+			l.Warn(
+				"bitbucket(dc)-connector: group already has this repository permission",
+				zap.String("principal_id", principal.Id.String()),
+				zap.String("principal_type", principal.Id.ResourceType),
+			)
+			return nil, fmt.Errorf("bitbucket(dc)-connector: group %s already has this repository permission", groupName)
+		}
+
+		err = g.client.UpdateGroupRepositoryPermission(ctx,
+			projectKey,
+			repositorySlug,
+			groupName,
+			permission,
+		)
+		if err != nil {
+			switch {
+			case errors.As(err, &bitbucketErr):
+				if bitbucketErr.ErrorCode != http.StatusUnauthorized {
+					return nil, fmt.Errorf("%s", bitbucketErr.Error())
+				}
+			default:
+				return nil, err
+			}
+		}
+
+		l.Warn("Group Membership has been created.",
+			zap.String("GroupName", groupName),
+			zap.String("ProjectKey", projectKey),
+			zap.String("RepositorySlug", repositorySlug),
+		)
 	case resourceTypeProject.Id:
 		_, permissions, err := ParseEntitlementID(entitlement.Id)
 		if err != nil {
