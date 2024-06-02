@@ -106,17 +106,8 @@ jobs:
       - name: Get status    
         run: |
           curl -LI localhost:7990/status -o /dev/null -w '%{http_code}\n' -s        
-      # - name: Sleep for 3 minutes
-      #   run: sleep 180s
-      # - name: Wait for http 200
-      #   run: ./scripts/wait_for_http_200.sh "http://localhost:7990"
-      - name: Wait for http 200
-        uses: nev7n/wait_for_response@v1
-        with:
-          url: 'http://localhost:7990/'
-          responseCode: 200
-          timeout: 180000
-          interval: 500
+      - name: Sleep for 3 minutes
+        run: sleep 180s
       - name: Double check status    
         run: curl -LI localhost:7990/status -o /dev/null -w '%{http_code}\n' -s  
       - name: Run baton-bitbucket-datacenter
