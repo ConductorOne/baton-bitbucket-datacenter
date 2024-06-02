@@ -115,7 +115,7 @@ jobs:
       - name: Run baton-bitbucket-datacenter
         run: |
           # ./baton-bitbucket-datacenter --bitbucketdc-username ${{ env.BATON_USERNAME }} --bitbucketdc-password ${{ env.BATON_PASSWORD }} --bitbucketdc-baseurl ${{ env.BATON_BASE_URL }}
-          echo ${{ env.BATON_USERNAME }}
-          echo ${{ env.BATON_PASSWORD }}
-          echo ${{ env.BATON_BASE_URL }}
+          echo ${{ env.BATON_BITBUCKETDC_USERNAME }}
+          echo ${{ env.BATON_BITBUCKETDC_PASSWORD }}
+          echo ${{ env.BATON_BITBUCKETDC_BASEURL }}
       
