@@ -235,7 +235,6 @@ func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 		if err != nil {
 			return nil, "", nil, err
 		}
-		// add project code and check group on projects then just check group
 	case resourceTypeProject.Id:
 		projects, nextPageToken, err := g.client.ListProjects(ctx, client.PageOptions{
 			PerPage: ITEMSPERPAGE,

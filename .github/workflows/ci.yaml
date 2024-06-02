@@ -124,11 +124,10 @@ jobs:
         run: |
            ./baton-bitbucket-datacenter --bitbucketdc-username ${{ env.BATON_BITBUCKETDC_USERNAME }} --bitbucketdc-password ${{ env.BATON_BITBUCKETDC_PASSWORD }} --bitbucketdc-baseurl ${{ env.BATON_BITBUCKETDC_BASEURL }} --log-level=debug
            baton grants --entitlement="${{ env.CONNECTOR_ENTITLEMENT }}" --output-format=json | jq --exit-status "if .grants then .grants[]?.principal.id.resource != \"${{ env.CONNECTOR_PRINCIPAL_ID }}\" else . end"
-          #  baton grants --entitlement ${{ env.CONNECTOR_ENTITLEMENT }} --output-format=json | jq -e ".grants | any(.principal.id.resource !=\"${{ env.CONNECTOR_PRINCIPAL }}\")"
       - name: Grant entitlement
         run: | 
           ./baton-bitbucket-datacenter --bitbucketdc-username ${{ env.BATON_BITBUCKETDC_USERNAME }} --bitbucketdc-password ${{ env.BATON_BITBUCKETDC_PASSWORD }} --bitbucketdc-baseurl ${{ env.BATON_BITBUCKETDC_BASEURL }} --log-level=debug
-          ./baton-bitbucket-datacenter --bitbucketdc-username ${{ env.BATON_BITBUCKETDC_USERNAME }} --bitbucketdc-password ${{ env.BATON_BITBUCKETDC_PASSWORD }} --bitbucketdc-baseurl ${{ env.BATON_BITBUCKETDC_BASEURL }} --log-level=debug --grant-principal ${{ env.CONNECTOR_PRINCIPAL }} --grant-principal-type ${{ env.CONNECTOR_PRINCIPAL_TYPE }}
+          ./baton-bitbucket-datacenter --bitbucketdc-username ${{ env.BATON_BITBUCKETDC_USERNAME }} --bitbucketdc-password ${{ env.BATON_BITBUCKETDC_PASSWORD }} --bitbucketdc-baseurl ${{ env.BATON_BITBUCKETDC_BASEURL }} --log-level=debug --grant-entitlement ${{ env.CONNECTOR_ENTITLEMENT }} --grant-principal-type ${{ env.CONNECTOR_PRINCIPAL_TYPE }} --grant-principal ${{ env.CONNECTOR_PRINCIPAL }}  --provisioning
       - name: Check grant was re-granted
         run: |
           ./baton-bitbucket-datacenter --bitbucketdc-username ${{ env.BATON_BITBUCKETDC_USERNAME }} --bitbucketdc-password ${{ env.BATON_BITBUCKETDC_PASSWORD }} --bitbucketdc-baseurl ${{ env.BATON_BITBUCKETDC_BASEURL }} --log-level=debug
