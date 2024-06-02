@@ -429,7 +429,7 @@ func (g *groupBuilder) Grant(ctx context.Context, principal *v2.Resource, entitl
 		case roleRepoWrite, roleRepoAdmin, roleRepoRead:
 			permission = permissions[len(permissions)-1]
 		default:
-			return nil, fmt.Errorf("bitbucket(dc) connector: invalid permission type: %s", permissions[len(permissions)-1])
+			return nil, fmt.Errorf("bitbucket(dc)-connector: invalid permission type: %s", permissions[len(permissions)-1])
 		}
 
 		repoId, err := strconv.Atoi(principal.Id.Resource)
@@ -544,7 +544,7 @@ func (g *groupBuilder) Grant(ctx context.Context, principal *v2.Resource, entitl
 			zap.String("Permission", permission),
 		)
 	default:
-		return nil, fmt.Errorf("bitbucket(dc) connector: invalid grant resource type: %s", principal.Id.ResourceType)
+		return nil, fmt.Errorf("bitbucket(dc)-connector: invalid grant resource type: %s", principal.Id.ResourceType)
 	}
 
 	return nil, nil
@@ -552,8 +552,8 @@ func (g *groupBuilder) Grant(ctx context.Context, principal *v2.Resource, entitl
 
 func (g *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.Annotations, error) {
 	var (
-		projectKey, permission string
-		bitbucketErr           *client.BitbucketError
+		projectKey, repositorySlug, permission string
+		bitbucketErr                           *client.BitbucketError
 	)
 	l := ctxzap.Extract(ctx)
 	principal := grant.Principal
@@ -570,7 +570,7 @@ func (g *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations
 		return nil, fmt.Errorf("bitbucket(dc)-connector: only users, repos or projects can have group membership revoked")
 	}
 
-	groupResourceId, _, err := ParseEntitlementID(entitlement.Id)
+	groupResourceId, permissions, err := ParseEntitlementID(entitlement.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -613,12 +613,71 @@ func (g *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations
 			zap.String("Group", groupName),
 		)
 	case resourceTypeRepository.Id:
+		groupName := entitlement.Resource.Id.Resource
+		switch permissions[len(permissions)-1] {
+		case roleRepoWrite, roleRepoAdmin, roleRepoRead:
+			permission = permissions[len(permissions)-1]
+		default:
+			return nil, fmt.Errorf("bitbucket(dc)-connector: invalid permission type: %s", permissions[len(permissions)-1])
+		}
 
-	case resourceTypeProject.Id:
-		_, permissions, err := ParseEntitlementID(entitlement.Id)
+		repoId, err := strconv.Atoi(principal.Id.Resource)
 		if err != nil {
 			return nil, err
 		}
+
+		projectKey, repositorySlug, _, err = getRepositoryData(ctx, g, repoId)
+		if err != nil {
+			return nil, err
+		}
+
+		groupRepositoryPermissions, err := listGroupRepositoryPermissions(ctx, g.client, projectKey, repositorySlug)
+		if err != nil {
+			switch {
+			case errors.As(err, &bitbucketErr):
+				if bitbucketErr.ErrorCode != http.StatusUnauthorized {
+					return nil, fmt.Errorf("%s", bitbucketErr.Error())
+				}
+			default:
+				return nil, err
+			}
+		}
+
+		groupRepositoryPermissionPos := slices.IndexFunc(groupRepositoryPermissions, func(c client.GroupsPermissions) bool {
+			return c.Group.Name == groupName
+		})
+		if groupRepositoryPermissionPos == NF {
+			l.Warn(
+				"bitbucket(dc)-connector: group does not have this repository permission",
+				zap.String("principal_id", principal.Id.String()),
+				zap.String("principal_type", principal.Id.ResourceType),
+			)
+			return nil, fmt.Errorf("bitbucket(dc)-connector: group %s does not have this repository permission", groupName)
+		}
+
+		err = g.client.RevokeGroupRepositoryPermission(ctx,
+			projectKey,
+			repositorySlug,
+			groupName,
+		)
+		if err != nil {
+			switch {
+			case errors.As(err, &bitbucketErr):
+				if bitbucketErr.ErrorCode != http.StatusUnauthorized {
+					return nil, fmt.Errorf("%s", bitbucketErr.Error())
+				}
+			default:
+				return nil, err
+			}
+		}
+
+		l.Warn("Group Membership has been revoked.",
+			zap.String("GroupName", groupName),
+			zap.String("ProjectKey", projectKey),
+			zap.String("RepositorySlug", repositorySlug),
+			zap.String("Permission", permission),
+		)
+	case resourceTypeProject.Id:
 
 		switch permissions[len(permissions)-1] {
 		case roleProjectCreate, roleProjectWrite, roleProjectAdmin, roleProjectRead, roleRepoCreate:

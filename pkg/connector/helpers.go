@@ -542,8 +542,8 @@ func getRepositorySlug(ctx context.Context, r *repoBuilder, repoId int) (string,
 	return repos[repoPos].Project.Key, repos[repoPos].Slug, nil
 }
 
-func getRepositoryData(ctx context.Context, r *groupBuilder, repoId int) (string, string, int, error) {
-	repos, err := listRepositories(ctx, r.client)
+func getRepositoryData(ctx context.Context, g *groupBuilder, repoId int) (string, string, int, error) {
+	repos, err := listRepositories(ctx, g.client)
 	if err != nil {
 		return "", "", 0, err
 	}
