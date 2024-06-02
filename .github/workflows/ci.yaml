@@ -115,7 +115,7 @@ jobs:
         with:
           url: 'http://localhost:7990/'
           responseCode: 200
-          timeout: 2000
+          timeout: 180000
           interval: 500
       - name: Double check status    
         run: curl -LI localhost:7990/status -o /dev/null -w '%{http_code}\n' -s  

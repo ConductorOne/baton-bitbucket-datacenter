@@ -2,6 +2,9 @@ package connector
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"net/http"
 	"strconv"
 
 	"github.com/conductorone/baton-bitbucket-datacenter/pkg/client"
@@ -23,9 +26,10 @@ func (u *userBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
 // Users include a UserTrait because they are the 'shape' of a standard user.
 func (u *userBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId, pToken *pagination.Token) ([]*v2.Resource, string, annotations.Annotations, error) {
 	var (
-		pageToken int
-		err       error
-		rv        []*v2.Resource
+		pageToken    int
+		err          error
+		rv           []*v2.Resource
+		bitbucketErr *client.BitbucketError
 	)
 	if pToken.Token != "" {
 		pageToken, err = strconv.Atoi(pToken.Token)
@@ -39,7 +43,14 @@ func (u *userBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId,
 		Page:    pageToken,
 	})
 	if err != nil {
-		return nil, "", nil, err
+		switch {
+		case errors.As(err, &bitbucketErr):
+			if bitbucketErr.ErrorCode != http.StatusUnauthorized {
+				return nil, "", nil, fmt.Errorf("%s", bitbucketErr.Error())
+			}
+		default:
+			return nil, "", nil, err
+		}
 	}
 
 	for _, usr := range users {
