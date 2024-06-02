@@ -111,7 +111,6 @@ jobs:
       - name: Double check status    
         run: curl -LI localhost:7990/status -o /dev/null -w '%{http_code}\n' -s  
       - name: Run baton-bitbucket-datacenter
-        run: |
-          ./baton-bitbucket-datacenter --bitbucketdc-username ${{ env.BATON_BITBUCKETDC_USERNAME }} --bitbucketdc-password ${{ env.BATON_BITBUCKETDC_PASSWORD }} --bitbucketdc-baseurl ${{ env.BATON_BITBUCKETDC_BASEURL }} --log-level=debug
-
-      
+        run: ./baton-bitbucket-datacenter --bitbucketdc-username ${{ env.BATON_BITBUCKETDC_USERNAME }} --bitbucketdc-password ${{ env.BATON_BITBUCKETDC_PASSWORD }} --bitbucketdc-baseurl ${{ env.BATON_BITBUCKETDC_BASEURL }} --log-level=debug
+      - name: Check for grant before revoking
+        run: baton grants --entitlement="${{ env.CONNECTOR_ENTITLEMENT }}" --output-format=json | jq --exit-status ".grants[].principal.id.resource == \"${{ env.CONNECTOR_PRINCIPAL }}\""
