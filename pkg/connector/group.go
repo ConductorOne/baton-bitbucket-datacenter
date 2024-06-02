@@ -31,9 +31,10 @@ func (g *groupBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
 // Groups include a GroupTrait because they are the 'shape' of a standard group.
 func (g *groupBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId, pToken *pagination.Token) ([]*v2.Resource, string, annotations.Annotations, error) {
 	var (
-		pageToken int
-		err       error
-		rv        []*v2.Resource
+		pageToken    int
+		err          error
+		rv           []*v2.Resource
+		bitbucketErr *client.BitbucketError
 	)
 	_, bag, err := unmarshalSkipToken(pToken)
 	if err != nil {
@@ -58,7 +59,14 @@ func (g *groupBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId
 		Page:    pageToken,
 	})
 	if err != nil {
-		return nil, "", nil, err
+		switch {
+		case errors.As(err, &bitbucketErr):
+			if bitbucketErr.ErrorCode != http.StatusUnauthorized {
+				return nil, "", nil, fmt.Errorf("%s", bitbucketErr.Error())
+			}
+		default:
+			return nil, "", nil, err
+		}
 	}
 
 	err = bag.Next(nextPageToken)
@@ -369,15 +377,10 @@ func (g *groupBuilder) Grant(ctx context.Context, principal *v2.Resource, entitl
 		return nil, fmt.Errorf("bitbucket(dc)-connector: only users, repos or projects can be granted group membership")
 	}
 
-	groupResourceId, _, err := ParseEntitlementID(entitlement.Id)
-	if err != nil {
-		return nil, err
-	}
-
+	groupName := entitlement.Resource.Id.Resource
 	switch principal.Id.ResourceType {
 	case resourceTypeUser.Id:
 		userName := principal.DisplayName
-		groupName := groupResourceId.Resource
 		userId, err := strconv.Atoi(principal.Id.Resource)
 		if err != nil {
 			return nil, err
@@ -413,9 +416,59 @@ func (g *groupBuilder) Grant(ctx context.Context, principal *v2.Resource, entitl
 			zap.String("Group", groupName),
 		)
 	case resourceTypeRepository.Id:
+		groupName := principal.DisplayName
+		projectId, err := strconv.Atoi(principal.Id.Resource)
+		if err != nil {
+			return nil, err
+		}
+
+		projectKey, err = getProjectKey(ctx, g, projectId)
+		if err != nil {
+			return nil, err
+		}
+
+		repos, err := listRepositories(ctx, g.client)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, repo := range repos {
+			repositorySlug := repo.Slug
+			listGroups, err := listGroupRepositoryPermissions(ctx, g.client, projectKey, repositorySlug)
+			if err != nil {
+				return nil, err
+			}
+
+			index := slices.IndexFunc(listGroups, func(c client.GroupsPermissions) bool {
+				return c.Group.Name == groupName
+			})
+			if index != NF {
+				l.Warn(
+					"bitbucket(dc)-connector: group already has this repository permission",
+					zap.String("principal_id", principal.Id.String()),
+					zap.String("principal_type", principal.Id.ResourceType),
+				)
+				return nil, fmt.Errorf("bitbucket(dc)-connector: group %s already has this repository permission", groupName)
+			}
+
+			err = g.client.UpdateGroupRepositoryPermission(ctx,
+				projectKey,
+				repositorySlug,
+				groupName,
+				permission,
+			)
+			if err != nil {
+				return nil, err
+			}
+
+			l.Warn("Group Membership has been created.",
+				zap.String("GroupName", groupName),
+				zap.String("ProjectKey", projectKey),
+				zap.String("RepositorySlug", repositorySlug),
+			)
+		}
 
 	case resourceTypeProject.Id:
-		groupName := entitlement.Resource.Id.Resource
 		_, permissions, err := ParseEntitlementID(entitlement.Id)
 		if err != nil {
 			return nil, err

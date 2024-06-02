@@ -361,7 +361,13 @@ func (d *DataCenterClient) GetRepos(ctx context.Context, startPage, limit string
 
 	resp, err := d.httpClient.Do(req, uhttp.WithJSONResponse(&repoData))
 	if err != nil {
-		return nil, Page{}, err
+		return nil, Page{}, &BitbucketError{
+			ErrorMessage:     err.Error(),
+			ErrorDescription: err.Error(),
+			ErrorCode:        resp.StatusCode,
+			ErrorSummary:     fmt.Sprint(resp.Body),
+			ErrorLink:        resp.Status,
+		}
 	}
 
 	defer resp.Body.Close()
@@ -428,7 +434,13 @@ func (d *DataCenterClient) GetGroups(ctx context.Context, startPage, limit strin
 
 	resp, err := d.httpClient.Do(req, uhttp.WithJSONResponse(&groupData))
 	if err != nil {
-		return nil, Page{}, err
+		return nil, Page{}, &BitbucketError{
+			ErrorMessage:     err.Error(),
+			ErrorDescription: err.Error(),
+			ErrorCode:        resp.StatusCode,
+			ErrorSummary:     fmt.Sprint(resp.Body),
+			ErrorLink:        resp.Status,
+		}
 	}
 
 	defer resp.Body.Close()

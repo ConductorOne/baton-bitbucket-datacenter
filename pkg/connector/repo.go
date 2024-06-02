@@ -2,7 +2,9 @@ package connector
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"slices"
 	"strconv"
 
@@ -40,9 +42,10 @@ func (r *repoBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
 // Repos include a RepoTrait because they are the 'shape' of a standard repository.
 func (r *repoBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId, pToken *pagination.Token) ([]*v2.Resource, string, annotations.Annotations, error) {
 	var (
-		pageToken int
-		err       error
-		rv        []*v2.Resource
+		pageToken    int
+		err          error
+		rv           []*v2.Resource
+		bitbucketErr *client.BitbucketError
 	)
 	_, bag, err := unmarshalSkipToken(pToken)
 	if err != nil {
@@ -67,7 +70,14 @@ func (r *repoBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId,
 		Page:    pageToken,
 	})
 	if err != nil {
-		return nil, "", nil, err
+		switch {
+		case errors.As(err, &bitbucketErr):
+			if bitbucketErr.ErrorCode != http.StatusUnauthorized {
+				return nil, "", nil, fmt.Errorf("%s", bitbucketErr.Error())
+			}
+		default:
+			return nil, "", nil, err
+		}
 	}
 
 	err = bag.Next(nextPageToken)
