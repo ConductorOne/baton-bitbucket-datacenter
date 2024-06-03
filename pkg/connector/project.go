@@ -2,9 +2,7 @@ package connector
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"net/http"
 	"slices"
 	"strconv"
 
@@ -40,10 +38,9 @@ func (p *projectBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
 // Projects include a ProjectTrait because they are the 'shape' of a standard project.
 func (p *projectBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId, pToken *pagination.Token) ([]*v2.Resource, string, annotations.Annotations, error) {
 	var (
-		pageToken    int
-		err          error
-		rv           []*v2.Resource
-		bitbucketErr *client.BitbucketError
+		pageToken int
+		err       error
+		rv        []*v2.Resource
 	)
 	_, bag, err := unmarshalSkipToken(pToken)
 	if err != nil {
@@ -67,15 +64,9 @@ func (p *projectBuilder) List(ctx context.Context, parentResourceID *v2.Resource
 		PerPage: ITEMSPERPAGE,
 		Page:    pageToken,
 	})
+	err = getError(err)
 	if err != nil {
-		switch {
-		case errors.As(err, &bitbucketErr):
-			if bitbucketErr.ErrorCode != http.StatusUnauthorized {
-				return nil, "", nil, fmt.Errorf("%s", bitbucketErr.Error())
-			}
-		default:
-			return nil, "", nil, err
-		}
+		return nil, "", nil, err
 	}
 
 	err = bag.Next(nextPageToken)
@@ -220,7 +211,7 @@ func (p *projectBuilder) Grants(ctx context.Context, resource *v2.Resource, pTok
 			rv = append(rv, membershipGrant)
 		}
 	default:
-		return nil, "", nil, fmt.Errorf("bitbucket(dc) connector: invalid grant resource type: %s", bag.ResourceTypeID())
+		return nil, "", nil, fmt.Errorf("bitbucket(dc)-connector: invalid grant resource type: %s", bag.ResourceTypeID())
 	}
 
 	nextPageToken, err = bag.Marshal()

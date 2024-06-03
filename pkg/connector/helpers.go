@@ -2,7 +2,9 @@ package connector
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"slices"
 	"strconv"
 	"strings"
@@ -574,4 +576,40 @@ func getGroupProjectsPermission(ctx context.Context, cli *client.DataCenterClien
 	}
 
 	return listGroup[groupPos].Permission, groupPos, err
+}
+
+func getError(err error) error {
+	var bitbucketErr *client.BitbucketError
+	if err == nil {
+		return nil
+	}
+
+	switch {
+	case errors.As(err, &bitbucketErr):
+		if bitbucketErr.ErrorCode == http.StatusUnauthorized {
+			return fmt.Errorf("%s", bitbucketErr.Error())
+		}
+	default:
+		return err
+	}
+
+	return nil
+}
+
+func checkStatusUnauthorizedError(err error) error {
+	var bitbucketErr *client.BitbucketError
+	if err == nil {
+		return nil
+	}
+
+	switch {
+	case errors.As(err, &bitbucketErr):
+		if bitbucketErr.ErrorCode != http.StatusUnauthorized {
+			return fmt.Errorf("%s", bitbucketErr.Error())
+		}
+	default:
+		return err
+	}
+
+	return nil
 }
