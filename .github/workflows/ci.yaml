@@ -108,6 +108,13 @@ jobs:
           curl -LI localhost:7990/status -o /dev/null -w '%{http_code}\n' -s        
           sleep 180s
           curl -LI localhost:7990/status -o /dev/null -w '%{http_code}\n' -s  
+      - name: Check values
+        id: out
+        run: |
+          status=$(curl -LI localhost:7990/status -o /dev/null -w '%{http_code}\n' -s); echo "status=$status" >> $GITHUB_OUTPUT
+      - name: fail on output
+        if: steps.out.outputs.status != 200
+        run: exit 1
       - name: Run baton-bitbucket-datacenter
         run: ./baton-bitbucket-datacenter 
       - name: Check for grant before revoking
