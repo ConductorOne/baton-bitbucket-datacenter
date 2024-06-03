@@ -15,6 +15,8 @@ import (
 	"github.com/conductorone/baton-sdk/pkg/pagination"
 	ent "github.com/conductorone/baton-sdk/pkg/types/entitlement"
 	rs "github.com/conductorone/baton-sdk/pkg/types/resource"
+	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
+	"go.uber.org/zap"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )
@@ -591,8 +593,9 @@ func getError(err error) error {
 	return err
 }
 
-func checkStatusUnauthorizedError(err error) error {
+func checkStatusUnauthorizedError(ctx context.Context, err error) error {
 	var bitbucketErr *client.BitbucketError
+	l := ctxzap.Extract(ctx)
 	if err == nil {
 		return nil
 	}
@@ -602,6 +605,14 @@ func checkStatusUnauthorizedError(err error) error {
 		if bitbucketErr.ErrorCode != http.StatusUnauthorized {
 			return fmt.Errorf("%s", bitbucketErr.Error())
 		}
+
+		l.Warn(
+			"bitbucket(dc)-connector: unauthorized to perform request",
+			zap.Int("StatusCode", bitbucketErr.ErrorCode),
+			zap.String("Error", bitbucketErr.Error()),
+			zap.String("ErrorSummary", bitbucketErr.ErrorSummary),
+			zap.String("ErrorLink", bitbucketErr.ErrorLink),
+		)
 	default:
 		return err
 	}

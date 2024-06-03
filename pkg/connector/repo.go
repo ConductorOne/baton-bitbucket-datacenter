@@ -66,7 +66,7 @@ func (r *repoBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId,
 		PerPage: ITEMSPERPAGE,
 		Page:    pageToken,
 	})
-	err = checkStatusUnauthorizedError(err)
+	err = checkStatusUnauthorizedError(ctx, err)
 	if err != nil {
 		return nil, "", nil, err
 	}
