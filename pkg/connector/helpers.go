@@ -584,16 +584,11 @@ func getError(err error) error {
 		return nil
 	}
 
-	switch {
-	case errors.As(err, &bitbucketErr):
-		if bitbucketErr.ErrorCode == http.StatusUnauthorized {
-			return fmt.Errorf("%s", bitbucketErr.Error())
-		}
-	default:
-		return err
+	if errors.As(err, &bitbucketErr) {
+		return fmt.Errorf("%s %s", bitbucketErr.Error(), bitbucketErr.ErrorSummary)
 	}
 
-	return nil
+	return err
 }
 
 func checkStatusUnauthorizedError(err error) error {
