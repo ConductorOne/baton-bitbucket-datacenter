@@ -447,7 +447,7 @@ func (g *groupBuilder) Grant(ctx context.Context, principal *v2.Resource, entitl
 			groupName,
 			permission,
 		)
-		err = checkStatusUnauthorizedError(ctx, err)
+		err = getError(err)
 		if err != nil {
 			return nil, err
 		}
@@ -616,7 +616,7 @@ func (g *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations
 			repositorySlug,
 			groupName,
 		)
-		err = checkStatusUnauthorizedError(ctx, err)
+		err = getError(err)
 		if err != nil {
 			return nil, err
 		}
