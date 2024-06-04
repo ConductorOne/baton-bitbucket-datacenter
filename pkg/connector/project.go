@@ -243,7 +243,7 @@ func (p *projectBuilder) Grant(ctx context.Context, principal *v2.Resource, enti
 	case roleProjectCreate, roleProjectWrite, roleProjectAdmin, roleProjectRead, roleRepoCreate:
 		permission = permissions[len(permissions)-1]
 	default:
-		return nil, fmt.Errorf("bitbucket(dc) connector: invalid permission type: %s", permissions[len(permissions)-1])
+		return nil, fmt.Errorf("bitbucket(dc)-connector: invalid permission type: %s", permissions[len(permissions)-1])
 	}
 
 	projectId, err := strconv.Atoi(entitlement.Resource.Id.Resource)
@@ -320,7 +320,7 @@ func (p *projectBuilder) Grant(ctx context.Context, principal *v2.Resource, enti
 			zap.String("Permission", permission),
 		)
 	default:
-		return nil, fmt.Errorf("bitbucket(dc) connector: invalid grant resource type: %s", principal.Id.ResourceType)
+		return nil, fmt.Errorf("bitbucket(dc)-connector: invalid grant resource type: %s", principal.Id.ResourceType)
 	}
 
 	return nil, nil
@@ -352,7 +352,7 @@ func (p *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotatio
 	case roleProjectCreate, roleProjectWrite, roleProjectAdmin, roleProjectRead, roleRepoCreate:
 		permission = permissions[len(permissions)-1]
 	default:
-		return nil, fmt.Errorf("bitbucket(dc) connector: invalid permission type: %s", permissions[len(permissions)-1])
+		return nil, fmt.Errorf("bitbucket(dc)-connector: invalid permission type: %s", permissions[len(permissions)-1])
 	}
 
 	projectId, err := strconv.Atoi(entitlement.Resource.Id.Resource)
@@ -431,7 +431,7 @@ func (p *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotatio
 			zap.String("RepositorySlug", repositorySlug),
 		)
 	default:
-		return nil, fmt.Errorf("bitbucket(dc) connector: invalid grant resource type: %s", principal.Id.ResourceType)
+		return nil, fmt.Errorf("bitbucket(dc)-connector: invalid grant resource type: %s", principal.Id.ResourceType)
 	}
 
 	return nil, nil

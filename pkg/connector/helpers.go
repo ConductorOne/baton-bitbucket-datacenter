@@ -603,7 +603,7 @@ func checkStatusUnauthorizedError(ctx context.Context, err error) error {
 	switch {
 	case errors.As(err, &bitbucketErr):
 		if bitbucketErr.ErrorCode != http.StatusUnauthorized {
-			return fmt.Errorf("%s", bitbucketErr.Error())
+			return fmt.Errorf("%s %s", bitbucketErr.Error(), bitbucketErr.ErrorSummary)
 		}
 
 		l.Warn(
