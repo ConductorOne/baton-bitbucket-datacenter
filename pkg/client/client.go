@@ -224,7 +224,13 @@ func (d *DataCenterClient) GetUsers(ctx context.Context, startPage, limit string
 
 	resp, err := d.httpClient.Do(req, uhttp.WithJSONResponse(&userData))
 	if err != nil {
-		return nil, Page{}, err
+		return nil, Page{}, &BitbucketError{
+			ErrorMessage:     err.Error(),
+			ErrorDescription: err.Error(),
+			ErrorCode:        resp.StatusCode,
+			ErrorSummary:     fmt.Sprint(resp.Body),
+			ErrorLink:        endpointUrl,
+		}
 	}
 
 	defer resp.Body.Close()
@@ -291,7 +297,13 @@ func (d *DataCenterClient) GetProjects(ctx context.Context, startPage, limit str
 
 	resp, err := d.httpClient.Do(req, uhttp.WithJSONResponse(&projectData))
 	if err != nil {
-		return nil, Page{}, err
+		return nil, Page{}, &BitbucketError{
+			ErrorMessage:     err.Error(),
+			ErrorDescription: err.Error(),
+			ErrorCode:        resp.StatusCode,
+			ErrorSummary:     fmt.Sprint(resp.Body),
+			ErrorLink:        endpointUrl,
+		}
 	}
 
 	defer resp.Body.Close()
@@ -355,7 +367,13 @@ func (d *DataCenterClient) GetRepos(ctx context.Context, startPage, limit string
 
 	resp, err := d.httpClient.Do(req, uhttp.WithJSONResponse(&repoData))
 	if err != nil {
-		return nil, Page{}, err
+		return nil, Page{}, &BitbucketError{
+			ErrorMessage:     err.Error(),
+			ErrorDescription: err.Error(),
+			ErrorCode:        resp.StatusCode,
+			ErrorSummary:     fmt.Sprint(resp.Body),
+			ErrorLink:        endpointUrl,
+		}
 	}
 
 	defer resp.Body.Close()
@@ -422,7 +440,13 @@ func (d *DataCenterClient) GetGroups(ctx context.Context, startPage, limit strin
 
 	resp, err := d.httpClient.Do(req, uhttp.WithJSONResponse(&groupData))
 	if err != nil {
-		return nil, Page{}, err
+		return nil, Page{}, &BitbucketError{
+			ErrorMessage:     err.Error(),
+			ErrorDescription: err.Error(),
+			ErrorCode:        resp.StatusCode,
+			ErrorSummary:     fmt.Sprint(resp.Body),
+			ErrorLink:        endpointUrl,
+		}
 	}
 
 	defer resp.Body.Close()
@@ -572,7 +596,7 @@ func (d *DataCenterClient) GetGlobalUserPermissions(ctx context.Context, startPa
 			ErrorDescription: err.Error(),
 			ErrorCode:        resp.StatusCode,
 			ErrorSummary:     fmt.Sprint(resp.Body),
-			ErrorLink:        resp.Status,
+			ErrorLink:        endpointUrl,
 		}
 	}
 
@@ -894,13 +918,13 @@ func (d *DataCenterClient) GetGroupRepositoryPermissions(ctx context.Context, st
 		page           Page
 		sPage, nPage   = "0", "0"
 	)
-	strUrl := fmt.Sprintf("%s/%s/%s/repos/%s/%s", d.baseUrl,
+	endpointUrl := fmt.Sprintf("%s/%s/%s/repos/%s/%s", d.baseUrl,
 		allProjectsEndpoint,
 		projectKey,
 		repositorySlug,
 		groupsWithPermission,
 	)
-	uri, err := url.Parse(strUrl)
+	uri, err := url.Parse(endpointUrl)
 	if err != nil {
 		return nil, Page{}, err
 	}
@@ -922,7 +946,13 @@ func (d *DataCenterClient) GetGroupRepositoryPermissions(ctx context.Context, st
 
 	resp, err := d.httpClient.Do(req, uhttp.WithJSONResponse(&permissionData))
 	if err != nil {
-		return nil, Page{}, err
+		return nil, Page{}, &BitbucketError{
+			ErrorMessage:     err.Error(),
+			ErrorDescription: err.Error(),
+			ErrorCode:        resp.StatusCode,
+			ErrorSummary:     fmt.Sprint(resp.Body),
+			ErrorLink:        endpointUrl,
+		}
 	}
 
 	defer resp.Body.Close()
@@ -1101,6 +1131,7 @@ func (d *DataCenterClient) UpdateUserRepositoryPermission(ctx context.Context, p
 
 // UpdateGroupRepositoryPermission
 // Update group repository permission
+// The authenticated user must have REPO_ADMIN permission for the specified repository or a higher project or global permission to call this resource.
 // https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-permission-management/#api-api-latest-projects-projectkey-repos-repositoryslug-permissions-groups-put
 func (d *DataCenterClient) UpdateGroupRepositoryPermission(ctx context.Context, projectKey, repositorySlug, groupName, permission string) error {
 	endpointUrl := fmt.Sprintf("%s/%s/%s/repos/%s/%s?name=%s&permission=%s",
@@ -1129,7 +1160,13 @@ func (d *DataCenterClient) UpdateGroupRepositoryPermission(ctx context.Context, 
 
 	resp, err := d.httpClient.Do(req)
 	if err != nil {
-		return err
+		return &BitbucketError{
+			ErrorMessage:     err.Error(),
+			ErrorDescription: err.Error(),
+			ErrorCode:        resp.StatusCode,
+			ErrorSummary:     fmt.Sprint(resp.Body),
+			ErrorLink:        endpointUrl,
+		}
 	}
 
 	defer resp.Body.Close()
@@ -1287,7 +1324,13 @@ func (d *DataCenterClient) RevokeGroupProjectPermission(ctx context.Context, pro
 
 	resp, err := d.httpClient.Do(req)
 	if err != nil {
-		return err
+		return &BitbucketError{
+			ErrorMessage:     err.Error(),
+			ErrorDescription: err.Error(),
+			ErrorCode:        resp.StatusCode,
+			ErrorSummary:     fmt.Sprint(resp.Body),
+			ErrorLink:        endpointUrl,
+		}
 	}
 
 	defer resp.Body.Close()
@@ -1367,7 +1410,13 @@ func (d *DataCenterClient) UpdateGroupProjectPermission(ctx context.Context, pro
 
 	resp, err := d.httpClient.Do(req)
 	if err != nil {
-		return err
+		return &BitbucketError{
+			ErrorMessage:     err.Error(),
+			ErrorDescription: err.Error(),
+			ErrorCode:        resp.StatusCode,
+			ErrorSummary:     fmt.Sprint(resp.Body),
+			ErrorLink:        endpointUrl,
+		}
 	}
 
 	defer resp.Body.Close()

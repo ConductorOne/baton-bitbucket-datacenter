@@ -2,7 +2,9 @@ package connector
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"slices"
 	"strconv"
 	"strings"
@@ -13,6 +15,8 @@ import (
 	"github.com/conductorone/baton-sdk/pkg/pagination"
 	ent "github.com/conductorone/baton-sdk/pkg/types/entitlement"
 	rs "github.com/conductorone/baton-sdk/pkg/types/resource"
+	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
+	"go.uber.org/zap"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )
@@ -343,6 +347,8 @@ func listUserRepositoryPermissions(ctx context.Context, cli *client.DataCenterCl
 	return lstPermissions, nil
 }
 
+// listGroupRepositoryPermissions
+// repositorySlug = name.
 func listGroupRepositoryPermissions(ctx context.Context, cli *client.DataCenterClient, projectKey, repositorySlug string) ([]client.GroupsPermissions, error) {
 	var (
 		page           int
@@ -455,8 +461,8 @@ func listProjects(ctx context.Context, cli *client.DataCenterClient) ([]client.P
 	return lstProjects, nil
 }
 
-func getProjectKey(ctx context.Context, p *projectBuilder, projectId int) (string, error) {
-	projects, err := listProjects(ctx, p.client)
+func findProjectKey(ctx context.Context, cli *client.DataCenterClient, projectId int) (string, error) {
+	projects, err := listProjects(ctx, cli)
 	if err != nil {
 		return "", err
 	}
@@ -470,6 +476,29 @@ func getProjectKey(ctx context.Context, p *projectBuilder, projectId int) (strin
 	}
 
 	return projects[projectPos].Key, nil
+}
+
+func getProjectKey(ctx context.Context, customType interface{}, projectId int) (string, error) {
+	var (
+		projectKey string
+		err        error
+	)
+	switch cli := customType.(type) {
+	case *projectBuilder:
+		projectKey, err = findProjectKey(ctx, cli.client, projectId)
+		if err != nil {
+			return "", err
+		}
+	case *groupBuilder:
+		projectKey, err = findProjectKey(ctx, cli.client, projectId)
+		if err != nil {
+			return "", err
+		}
+	default:
+		return "", fmt.Errorf("projectKey not found, unknown type")
+	}
+
+	return projectKey, nil
 }
 
 func listRepositories(ctx context.Context, cli *client.DataCenterClient) ([]client.Repos, error) {
@@ -510,9 +539,83 @@ func getRepositorySlug(ctx context.Context, r *repoBuilder, repoId int) (string,
 		return c.ID == repoId
 	})
 
-	if repoPos == -1 {
+	if repoPos == NF {
 		return "", "", fmt.Errorf("repository was not found")
 	}
 
 	return repos[repoPos].Project.Key, repos[repoPos].Slug, nil
+}
+
+func getRepositoryData(ctx context.Context, g *groupBuilder, repoId int) (string, string, int, error) {
+	repos, err := listRepositories(ctx, g.client)
+	if err != nil {
+		return "", "", 0, err
+	}
+
+	repoPos := slices.IndexFunc(repos, func(c client.Repos) bool {
+		return c.ID == repoId
+	})
+
+	if repoPos == NF {
+		return "", "", 0, fmt.Errorf("repository was not found")
+	}
+
+	return repos[repoPos].Project.Key, repos[repoPos].Slug, repos[repoPos].Project.ID, nil
+}
+
+func getGroupProjectsPermission(ctx context.Context, cli *client.DataCenterClient, projectKey, groupName string) (string, int, error) {
+	listGroup, err := listGroupProjectsPermissions(ctx, cli, projectKey)
+	if err != nil {
+		return "", 0, err
+	}
+
+	groupPos := slices.IndexFunc(listGroup, func(c client.GroupsPermissions) bool {
+		return c.Group.Name == groupName
+	})
+
+	if groupPos == NF {
+		return "", groupPos, err
+	}
+
+	return listGroup[groupPos].Permission, groupPos, err
+}
+
+func getError(err error) error {
+	var bitbucketErr *client.BitbucketError
+	if err == nil {
+		return nil
+	}
+
+	if errors.As(err, &bitbucketErr) {
+		return fmt.Errorf("%s %s", bitbucketErr.Error(), bitbucketErr.ErrorSummary)
+	}
+
+	return err
+}
+
+func checkStatusUnauthorizedError(ctx context.Context, err error) error {
+	var bitbucketErr *client.BitbucketError
+	l := ctxzap.Extract(ctx)
+	if err == nil {
+		return nil
+	}
+
+	switch {
+	case errors.As(err, &bitbucketErr):
+		if bitbucketErr.ErrorCode != http.StatusUnauthorized {
+			return fmt.Errorf("%s %s", bitbucketErr.Error(), bitbucketErr.ErrorSummary)
+		}
+
+		l.Warn(
+			"bitbucket(dc)-connector: unauthorized to perform request",
+			zap.Int("StatusCode", bitbucketErr.ErrorCode),
+			zap.String("Error", bitbucketErr.Error()),
+			zap.String("ErrorSummary", bitbucketErr.ErrorSummary),
+			zap.String("ErrorLink", bitbucketErr.ErrorLink),
+		)
+	default:
+		return err
+	}
+
+	return nil
 }
