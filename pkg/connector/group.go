@@ -14,6 +14,7 @@ import (
 	"github.com/conductorone/baton-sdk/pkg/pagination"
 	ent "github.com/conductorone/baton-sdk/pkg/types/entitlement"
 	"github.com/conductorone/baton-sdk/pkg/types/grant"
+	v2resource "github.com/conductorone/baton-sdk/pkg/types/resource"
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
 	"go.uber.org/zap"
 )
@@ -201,27 +202,12 @@ func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 			if groupsPermissionsPos == NF {
 				continue
 			}
-
-			ur, err := repositoryResource(ctx, &client.Repos{
-				Slug:          repo.Slug,
-				ID:            repo.ID,
-				Name:          repo.Name,
-				HierarchyId:   repo.HierarchyId,
-				ScmId:         repo.ScmId,
-				State:         repo.State,
-				StatusMessage: repo.StatusMessage,
-				Project: client.Projects{
-					Key:  repo.Project.Key,
-					ID:   repo.Project.ID,
-					Name: repo.Project.Name,
-					Type: repo.Project.Type,
-				},
-			}, resource.Id)
+			repoId, err := v2resource.NewResourceID(resourceTypeRepository, repo.Slug)
 			if err != nil {
 				return nil, "", nil, err
 			}
 
-			membershipGrant := grant.NewGrant(resource, groupRepositoryPermissions[groupsPermissionsPos].Permission, ur.Id)
+			membershipGrant := grant.NewGrant(resource, groupRepositoryPermissions[groupsPermissionsPos].Permission, repoId)
 			rv = append(rv, membershipGrant)
 		}
 
@@ -348,7 +334,6 @@ func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 }
 
 func (g *groupBuilder) Grant(ctx context.Context, principal *v2.Resource, entitlement *v2.Entitlement) (annotations.Annotations, error) {
-	var projectKey, permission, repositorySlug string
 	l := ctxzap.Extract(ctx)
 	if principal.Id.ResourceType != resourceTypeUser.Id &&
 		principal.Id.ResourceType != resourceTypeRepository.Id &&
@@ -360,6 +345,8 @@ func (g *groupBuilder) Grant(ctx context.Context, principal *v2.Resource, entitl
 		)
 		return nil, fmt.Errorf("bitbucket(dc)-connector: only users, repos or projects can be granted group membership")
 	}
+
+	var permission string
 
 	groupName := entitlement.Resource.Id.Resource
 	switch principal.Id.ResourceType {
@@ -413,17 +400,10 @@ func (g *groupBuilder) Grant(ctx context.Context, principal *v2.Resource, entitl
 			return nil, fmt.Errorf("bitbucket(dc)-connector: invalid permission type: %s", permissions[len(permissions)-1])
 		}
 
-		repoId, err := strconv.Atoi(principal.Id.Resource)
-		if err != nil {
-			return nil, err
-		}
+		repoSlug := principal.Id.Resource
+		projectKey := principal.ParentResourceId.Resource
 
-		projectKey, repositorySlug, _, err = getRepositoryData(ctx, g, repoId)
-		if err != nil {
-			return nil, err
-		}
-
-		groupRepositoryPermissions, err := listGroupRepositoryPermissions(ctx, g.client, projectKey, repositorySlug)
+		groupRepositoryPermissions, err := listGroupRepositoryPermissions(ctx, g.client, projectKey, repoSlug)
 		err = checkStatusUnauthorizedError(ctx, err)
 		if err != nil {
 			return nil, err
@@ -443,7 +423,7 @@ func (g *groupBuilder) Grant(ctx context.Context, principal *v2.Resource, entitl
 
 		err = g.client.UpdateGroupRepositoryPermission(ctx,
 			projectKey,
-			repositorySlug,
+			repoSlug,
 			groupName,
 			permission,
 		)
@@ -455,7 +435,7 @@ func (g *groupBuilder) Grant(ctx context.Context, principal *v2.Resource, entitl
 		l.Warn("Group Membership has been created.",
 			zap.String("GroupName", groupName),
 			zap.String("ProjectKey", projectKey),
-			zap.String("RepositorySlug", repositorySlug),
+			zap.String("RepositorySlug", repoSlug),
 		)
 	case resourceTypeProject.Id:
 		_, permissions, err := ParseEntitlementID(entitlement.Id)
@@ -470,15 +450,7 @@ func (g *groupBuilder) Grant(ctx context.Context, principal *v2.Resource, entitl
 			return nil, fmt.Errorf("bitbucket(dc) connector: invalid permission type: %s", permissions[len(permissions)-1])
 		}
 
-		projectId, err := strconv.Atoi(principal.Id.Resource)
-		if err != nil {
-			return nil, err
-		}
-
-		projectKey, err = getProjectKey(ctx, g, projectId)
-		if err != nil {
-			return nil, err
-		}
+		projectKey := principal.Id.Resource
 
 		listGroup, err := listGroupProjectsPermissions(ctx, g.client, projectKey)
 		if err != nil {
@@ -516,7 +488,7 @@ func (g *groupBuilder) Grant(ctx context.Context, principal *v2.Resource, entitl
 }
 
 func (g *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.Annotations, error) {
-	var projectKey, repositorySlug, permission string
+	var permission string
 	l := ctxzap.Extract(ctx)
 	principal := grant.Principal
 	entitlement := grant.Entitlement
@@ -583,17 +555,10 @@ func (g *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations
 			return nil, fmt.Errorf("bitbucket(dc)-connector: invalid permission type: %s", permissions[len(permissions)-1])
 		}
 
-		repoId, err := strconv.Atoi(principal.Id.Resource)
-		if err != nil {
-			return nil, err
-		}
+		repoSlug := principal.Id.Resource
+		projectKey := principal.ParentResourceId.Resource
 
-		projectKey, repositorySlug, _, err = getRepositoryData(ctx, g, repoId)
-		if err != nil {
-			return nil, err
-		}
-
-		groupRepositoryPermissions, err := listGroupRepositoryPermissions(ctx, g.client, projectKey, repositorySlug)
+		groupRepositoryPermissions, err := listGroupRepositoryPermissions(ctx, g.client, projectKey, repoSlug)
 		err = checkStatusUnauthorizedError(ctx, err)
 		if err != nil {
 			return nil, err
@@ -613,7 +578,7 @@ func (g *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations
 
 		err = g.client.RevokeGroupRepositoryPermission(ctx,
 			projectKey,
-			repositorySlug,
+			repoSlug,
 			groupName,
 		)
 		err = getError(err)
@@ -624,7 +589,7 @@ func (g *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations
 		l.Warn("Group Membership has been revoked.",
 			zap.String("GroupName", groupName),
 			zap.String("ProjectKey", projectKey),
-			zap.String("RepositorySlug", repositorySlug),
+			zap.String("RepositorySlug", repoSlug),
 			zap.String("Permission", permission),
 		)
 	case resourceTypeProject.Id:
@@ -635,15 +600,7 @@ func (g *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations
 			return nil, fmt.Errorf("bitbucket(dc) connector: invalid permission type: %s", permissions[len(permissions)-1])
 		}
 
-		projectId, err := strconv.Atoi(principal.Id.Resource)
-		if err != nil {
-			return nil, err
-		}
-
-		projectKey, err = getProjectKey(ctx, g, projectId)
-		if err != nil {
-			return nil, err
-		}
+		projectKey := principal.Id.Resource
 
 		listGroup, err := listGroupProjectsPermissions(ctx, g.client, projectKey)
 		if err != nil {

@@ -109,7 +109,7 @@ func projectResource(ctx context.Context, project *client.Projects, parentResour
 	resource, err := rs.NewGroupResource(
 		project.Name,
 		resourceTypeProject,
-		project.ID,
+		project.Key,
 		groupTraitOptions,
 		rs.WithParentResourceID(parentResourceID),
 	)
@@ -134,11 +134,10 @@ func repositoryResource(ctx context.Context, repository *client.Repos, parentRes
 	resource, err := rs.NewGroupResource(
 		repository.Name,
 		resourceTypeRepository,
-		repository.ID,
+		repository.Slug,
 		groupTraitOptions,
 		rs.WithParentResourceID(parentResourceID),
 	)
-
 	if err != nil {
 		return nil, err
 	}
@@ -188,7 +187,6 @@ func groupResource(ctx context.Context, group string, parentResourceID *v2.Resou
 		groupTraitOptions,
 		rs.WithParentResourceID(parentResourceID),
 	)
-
 	if err != nil {
 		return nil, err
 	}
@@ -431,136 +429,6 @@ func listGroupProjectsPermissions(ctx context.Context, cli *client.DataCenterCli
 	}
 
 	return lstPermissions, nil
-}
-
-func listProjects(ctx context.Context, cli *client.DataCenterClient) ([]client.Projects, error) {
-	var (
-		page        int
-		lstProjects []client.Projects
-	)
-	for {
-		projects, nextPageToken, err := cli.ListProjects(ctx, client.PageOptions{
-			PerPage: ITEMSPERPAGE,
-			Page:    page,
-		})
-		if err != nil {
-			return nil, err
-		}
-
-		lstProjects = append(lstProjects, projects...)
-		if nextPageToken == "" {
-			break
-		}
-
-		page, err = strconv.Atoi(nextPageToken)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	return lstProjects, nil
-}
-
-func findProjectKey(ctx context.Context, cli *client.DataCenterClient, projectId int) (string, error) {
-	projects, err := listProjects(ctx, cli)
-	if err != nil {
-		return "", err
-	}
-
-	projectPos := slices.IndexFunc(projects, func(c client.Projects) bool {
-		return c.ID == projectId
-	})
-
-	if projectPos == -1 {
-		return "", fmt.Errorf("project key was not found")
-	}
-
-	return projects[projectPos].Key, nil
-}
-
-func getProjectKey(ctx context.Context, customType interface{}, projectId int) (string, error) {
-	var (
-		projectKey string
-		err        error
-	)
-	switch cli := customType.(type) {
-	case *projectBuilder:
-		projectKey, err = findProjectKey(ctx, cli.client, projectId)
-		if err != nil {
-			return "", err
-		}
-	case *groupBuilder:
-		projectKey, err = findProjectKey(ctx, cli.client, projectId)
-		if err != nil {
-			return "", err
-		}
-	default:
-		return "", fmt.Errorf("projectKey not found, unknown type")
-	}
-
-	return projectKey, nil
-}
-
-func listRepositories(ctx context.Context, cli *client.DataCenterClient) ([]client.Repos, error) {
-	var (
-		page     int
-		lstRepos []client.Repos
-	)
-	for {
-		repos, nextPageToken, err := cli.ListRepos(ctx, client.PageOptions{
-			PerPage: ITEMSPERPAGE,
-			Page:    page,
-		})
-		if err != nil {
-			return nil, err
-		}
-
-		lstRepos = append(lstRepos, repos...)
-		if nextPageToken == "" {
-			break
-		}
-
-		page, err = strconv.Atoi(nextPageToken)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	return lstRepos, nil
-}
-
-func getRepositorySlug(ctx context.Context, r *repoBuilder, repoId int) (string, string, error) {
-	repos, err := listRepositories(ctx, r.client)
-	if err != nil {
-		return "", "", err
-	}
-
-	repoPos := slices.IndexFunc(repos, func(c client.Repos) bool {
-		return c.ID == repoId
-	})
-
-	if repoPos == NF {
-		return "", "", fmt.Errorf("repository was not found")
-	}
-
-	return repos[repoPos].Project.Key, repos[repoPos].Slug, nil
-}
-
-func getRepositoryData(ctx context.Context, g *groupBuilder, repoId int) (string, string, int, error) {
-	repos, err := listRepositories(ctx, g.client)
-	if err != nil {
-		return "", "", 0, err
-	}
-
-	repoPos := slices.IndexFunc(repos, func(c client.Repos) bool {
-		return c.ID == repoId
-	})
-
-	if repoPos == NF {
-		return "", "", 0, fmt.Errorf("repository was not found")
-	}
-
-	return repos[repoPos].Project.Key, repos[repoPos].Slug, repos[repoPos].Project.ID, nil
 }
 
 func getGroupProjectsPermission(ctx context.Context, cli *client.DataCenterClient, projectKey, groupName string) (string, int, error) {
