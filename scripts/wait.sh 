@@ -1,11 +1,4 @@
-#!/usr/bin/env bash
-
-##############################################################################################
-# Wait for URLs until return HTTP 200
-# - Just pass as many urls as required to the script - the script will wait for each, one by one
-# Example: ./wait_for_urls.sh "${MY_VARIABLE}" "http://192.168.56.101:8080"
-##############################################################################################
-
+ #!/bin/bash
 wait-for-url() {
   echo -n "Waiting $1 "
   timeout --foreground -s TERM 180s bash -c \
