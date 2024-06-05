@@ -319,12 +319,12 @@ func (p *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotatio
 	principalIsGroup := principal.Id.ResourceType == resourceTypeGroup.Id
 	if !principalIsUser && !principalIsGroup {
 		l.Warn(
-			"bitbucket(bk)-connector: only users and groups can have repository permissions revoked",
+			"bitbucket(bk)-connector: only users and groups can have project permissions revoked",
 			zap.String("principal_id", principal.Id.Resource),
 			zap.String("principal_type", principal.Id.ResourceType),
 		)
 
-		return nil, fmt.Errorf("bitbucket(bk)-connector: only users and groups can have repository permissions revoked")
+		return nil, fmt.Errorf("bitbucket(bk)-connector: only users and groups can have project permissions revoked")
 	}
 
 	_, permissions, err := ParseEntitlementID(entitlement.Id)
@@ -368,7 +368,7 @@ func (p *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotatio
 
 		err = p.client.RevokeUserProjectPermission(ctx, projectKey, userName)
 		if err != nil {
-			return nil, fmt.Errorf("bitbucket(dc)-connector: failed to remove repository user permission: %w", err)
+			return nil, fmt.Errorf("bitbucket(dc)-connector: failed to remove project user permission: %w", err)
 		}
 
 		l.Warn("Project Membership has been revoked.",
@@ -397,7 +397,7 @@ func (p *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotatio
 
 		err = p.client.RevokeGroupProjectPermission(ctx, projectKey, groupName)
 		if err != nil {
-			return nil, fmt.Errorf("bitbucket(dc)-connector: failed to remove repository group permission: %w", err)
+			return nil, fmt.Errorf("bitbucket(dc)-connector: failed to remove project group permission: %w", err)
 		}
 
 		l.Warn("Project Membership has been revoked.",

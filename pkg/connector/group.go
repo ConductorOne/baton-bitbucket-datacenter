@@ -202,7 +202,7 @@ func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 			if groupsPermissionsPos == NF {
 				continue
 			}
-			repoId, err := v2resource.NewResourceID(resourceTypeRepository, repo.Slug)
+			repoId, err := v2resource.NewResourceID(resourceTypeRepository, makeRepositoryID(projectKey, repositorySlug))
 			if err != nil {
 				return nil, "", nil, err
 			}
@@ -400,8 +400,10 @@ func (g *groupBuilder) Grant(ctx context.Context, principal *v2.Resource, entitl
 			return nil, fmt.Errorf("bitbucket(dc)-connector: invalid permission type: %s", permissions[len(permissions)-1])
 		}
 
-		repoSlug := principal.Id.Resource
-		projectKey := principal.ParentResourceId.Resource
+		projectKey, repoSlug, err := parseRepositoryID(principal.Id.Resource)
+		if err != nil {
+			return nil, err
+		}
 
 		groupRepositoryPermissions, err := listGroupRepositoryPermissions(ctx, g.client, projectKey, repoSlug)
 		err = checkStatusUnauthorizedError(ctx, err)
@@ -555,8 +557,10 @@ func (g *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations
 			return nil, fmt.Errorf("bitbucket(dc)-connector: invalid permission type: %s", permissions[len(permissions)-1])
 		}
 
-		repoSlug := principal.Id.Resource
-		projectKey := principal.ParentResourceId.Resource
+		projectKey, repoSlug, err := parseRepositoryID(principal.Id.Resource)
+		if err != nil {
+			return nil, err
+		}
 
 		groupRepositoryPermissions, err := listGroupRepositoryPermissions(ctx, g.client, projectKey, repoSlug)
 		err = checkStatusUnauthorizedError(ctx, err)

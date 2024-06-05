@@ -150,8 +150,10 @@ func (r *repoBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken 
 		}
 	}
 
-	repoSlug := resource.Id.Resource
-	projectKey := resource.ParentResourceId.Resource
+	projectKey, repoSlug, err := parseRepositoryID(resource.Id.Resource)
+	if err != nil {
+		return nil, "", nil, err
+	}
 
 	switch bag.ResourceTypeID() {
 	case resourceTypeGroup.Id:
@@ -240,8 +242,10 @@ func (r *repoBuilder) Grant(ctx context.Context, principal *v2.Resource, entitle
 		return nil, fmt.Errorf("bitbucket(dc) connector: invalid permission type: %s", permissions[len(permissions)-1])
 	}
 
-	repoSlug := entitlement.Resource.Id.Resource
-	projectKey := entitlement.Resource.ParentResourceId.Resource
+	projectKey, repoSlug, err := parseRepositoryID(entitlement.Resource.Id.Resource)
+	if err != nil {
+		return nil, err
+	}
 
 	switch principal.Id.ResourceType {
 	case resourceTypeUser.Id:
@@ -346,8 +350,10 @@ func (r *repoBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.
 		return nil, err
 	}
 
-	repoSlug := entitlement.Resource.Id.Resource
-	projectKey := entitlement.Resource.ParentResourceId.Resource
+	projectKey, repoSlug, err := parseRepositoryID(entitlement.Resource.Id.Resource)
+	if err != nil {
+		return nil, err
+	}
 
 	switch principal.Id.ResourceType {
 	case resourceTypeUser.Id:

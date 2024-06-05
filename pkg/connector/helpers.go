@@ -121,6 +121,19 @@ func projectResource(ctx context.Context, project *client.Projects, parentResour
 	return resource, nil
 }
 
+func parseRepositoryID(id string) (string, string, error) {
+	parts := strings.Split(id, "/")
+	if len(parts) != 2 {
+		return "", "", fmt.Errorf("bitbucket(dc)-connector: invalid repository id")
+	}
+
+	return parts[0], parts[1], nil
+}
+
+func makeRepositoryID(projectKey, repositorySlug string) string {
+	return fmt.Sprintf("%s/%s", projectKey, repositorySlug)
+}
+
 // Create a new connector resource for an Bitbucket Repository.
 func repositoryResource(ctx context.Context, repository *client.Repos, parentResourceID *v2.ResourceId) (*v2.Resource, error) {
 	profile := map[string]interface{}{
@@ -134,7 +147,7 @@ func repositoryResource(ctx context.Context, repository *client.Repos, parentRes
 	resource, err := rs.NewGroupResource(
 		repository.Name,
 		resourceTypeRepository,
-		repository.Slug,
+		makeRepositoryID(repository.Project.Key, repository.Slug),
 		groupTraitOptions,
 		rs.WithParentResourceID(parentResourceID),
 	)
