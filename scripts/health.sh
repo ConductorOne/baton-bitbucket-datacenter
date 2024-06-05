@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+
 wait-for-url() {
   echo -n "Waiting $1 "
   timeout --foreground -s TERM 180s bash -c \
