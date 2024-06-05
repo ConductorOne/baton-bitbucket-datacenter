@@ -305,7 +305,7 @@ func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 
 		for _, member := range groupMembers {
 			usrCppy := member
-			ur, err := userResource(ctx, &client.Users{
+			ur, err := userResource(ctx, &client.User{
 				Name:         usrCppy.Name,
 				EmailAddress: usrCppy.EmailAddress,
 				Active:       usrCppy.Active,

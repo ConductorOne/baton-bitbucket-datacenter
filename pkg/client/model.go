@@ -1,15 +1,15 @@
 package client
 
 type UsersAPIData struct {
-	Size          int     `json:"size,omitempty"`
-	Limit         int     `json:"limit,omitempty"`
-	IsLastPage    bool    `json:"isLastPage,omitempty"`
-	Users         []Users `json:"values,omitempty"`
-	Start         int     `json:"start,omitempty"`
-	NextPageStart int     `json:"nextPageStart,omitempty"`
+	Size          int    `json:"size,omitempty"`
+	Limit         int    `json:"limit,omitempty"`
+	IsLastPage    bool   `json:"isLastPage,omitempty"`
+	Users         []User `json:"values,omitempty"`
+	Start         int    `json:"start,omitempty"`
+	NextPageStart int    `json:"nextPageStart,omitempty"`
 }
 
-type Users struct {
+type User struct {
 	Name         string   `json:"name,omitempty"`
 	EmailAddress string   `json:"emailAddress,omitempty"`
 	Active       bool     `json:"active,omitempty"`
@@ -119,7 +119,7 @@ type GlobalGroupPermissionsAPIData struct {
 }
 
 type UsersPermissions struct {
-	User       Users  `json:"user,omitempty"`
+	User       User   `json:"user,omitempty"`
 	Permission string `json:"permission,omitempty"`
 }
 

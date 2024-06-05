@@ -197,15 +197,7 @@ func (r *repoBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken 
 		// create a permission grant for each user in the repository
 		for _, member := range usersPermissions {
 			usrCppy := member.User
-			ur, err := userResource(ctx, &client.Users{
-				Name:         usrCppy.Name,
-				EmailAddress: usrCppy.EmailAddress,
-				Active:       usrCppy.Active,
-				DisplayName:  usrCppy.DisplayName,
-				ID:           usrCppy.ID,
-				Slug:         usrCppy.Slug,
-				Type:         usrCppy.Type,
-			}, resource.Id)
+			ur, err := userResource(ctx, &usrCppy, resource.Id)
 			if err != nil {
 				return nil, "", nil, fmt.Errorf("error creating user resource for repository %s: %w", resource.Id.Resource, err)
 			}

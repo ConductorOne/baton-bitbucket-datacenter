@@ -53,7 +53,7 @@ func splitFullName(name string) (string, string) {
 	return firstName, lastName
 }
 
-func userResource(ctx context.Context, user *client.Users, parentResourceID *v2.ResourceId) (*v2.Resource, error) {
+func userResource(ctx context.Context, user *client.User, parentResourceID *v2.ResourceId) (*v2.Resource, error) {
 	var userStatus v2.UserTrait_Status_Status = v2.UserTrait_Status_STATUS_ENABLED
 	firstName, lastName := splitFullName(user.Name)
 	profile := map[string]interface{}{

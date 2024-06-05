@@ -191,7 +191,7 @@ func New(ctx context.Context, baseUrl string, bitbucketClient *DataCenterClient)
 // GetUsers
 // Get all users. Only authenticated users may call this resource.
 // https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-system-maintenance/#api-api-latest-users-get
-func (d *DataCenterClient) GetUsers(ctx context.Context, startPage, limit string) ([]Users, Page, error) {
+func (d *DataCenterClient) GetUsers(ctx context.Context, startPage, limit string) ([]User, Page, error) {
 	var (
 		userData     UsersAPIData
 		page         Page
@@ -247,7 +247,7 @@ func (d *DataCenterClient) GetUsers(ctx context.Context, startPage, limit string
 	return userData.Users, page, nil
 }
 
-func (d *DataCenterClient) ListUsers(ctx context.Context, opts PageOptions) ([]Users, string, error) {
+func (d *DataCenterClient) ListUsers(ctx context.Context, opts PageOptions) ([]User, string, error) {
 	var nextPageToken string = ""
 	users, page, err := d.GetUsers(ctx, strconv.Itoa(opts.Page), strconv.Itoa(opts.PerPage))
 	if err != nil {

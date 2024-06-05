@@ -194,7 +194,7 @@ func (p *projectBuilder) Grants(ctx context.Context, resource *v2.Resource, pTok
 
 		for _, member := range usersPermissions {
 			usrCppy := member.User
-			ur, err := userResource(ctx, &client.Users{
+			ur, err := userResource(ctx, &client.User{
 				Name:         usrCppy.Name,
 				EmailAddress: usrCppy.EmailAddress,
 				Active:       usrCppy.Active,
