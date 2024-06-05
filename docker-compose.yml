@@ -17,6 +17,9 @@ services:
       POSTGRES_PASSWORD: bitbucket
     networks:
       - bitbucket-network
+    hostname: postgres
+    ports:
+      - "5432:5432"
     healthcheck:
       test: [ "CMD", "pg_isready", "-q", "-d", "bitbucket", "-U", "bitbucket" ]
       interval: 10s
@@ -40,6 +43,7 @@ services:
       - '7990:7990'
     networks:
       - bitbucket-network
+    hostname: bitbucket
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:7990/"]
       interval: 10s
