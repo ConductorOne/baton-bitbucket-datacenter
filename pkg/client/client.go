@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -18,6 +19,7 @@ type DataCenterClient struct {
 	auth       *auth
 	httpClient *uhttp.BaseHttpClient
 	baseUrl    string
+	myCache    GoCache
 }
 
 type BitbucketError struct {
@@ -78,6 +80,7 @@ func NewClient() *DataCenterClient {
 			password:    "",
 			bearerToken: "",
 		},
+		myCache: NewGoCache(30, 30),
 	}
 }
 
@@ -183,6 +186,7 @@ func New(ctx context.Context, baseUrl string, bitbucketClient *DataCenterClient)
 			password:    clientSecret,
 			bearerToken: clientToken,
 		},
+		myCache: NewGoCache(30, 30),
 	}
 
 	return &dc, nil
@@ -917,6 +921,7 @@ func (d *DataCenterClient) GetGroupRepositoryPermissions(ctx context.Context, st
 		permissionData GroupPermissionsAPIData
 		page           Page
 		sPage, nPage   = "0", "0"
+		resp           *http.Response
 	)
 	endpointUrl := fmt.Sprintf("%s/%s/%s/repos/%s/%s", d.baseUrl,
 		allProjectsEndpoint,
@@ -944,18 +949,39 @@ func (d *DataCenterClient) GetGroupRepositoryPermissions(ctx context.Context, st
 		return nil, Page{}, err
 	}
 
-	resp, err := d.httpClient.Do(req, uhttp.WithJSONResponse(&permissionData))
-	if err != nil {
-		return nil, Page{}, &BitbucketError{
-			ErrorMessage:     err.Error(),
-			ErrorDescription: err.Error(),
-			ErrorCode:        resp.StatusCode,
-			ErrorSummary:     fmt.Sprint(resp.Body),
-			ErrorLink:        endpointUrl,
+	cacheKey := CreateCacheKey(req)
+	found := d.myCache.Has(cacheKey)
+	if !found {
+		resp, err := d.httpClient.Do(req, uhttp.WithJSONResponse(&permissionData))
+		if err != nil {
+			return nil, Page{}, &BitbucketError{
+				ErrorMessage:     err.Error(),
+				ErrorDescription: err.Error(),
+				ErrorCode:        resp.StatusCode,
+				ErrorSummary:     fmt.Sprint(resp.Body),
+				ErrorLink:        endpointUrl,
+			}
 		}
+
+		d.myCache.Set(cacheKey, resp)
+		defer resp.Body.Close()
 	}
 
-	defer resp.Body.Close()
+	if found {
+		resp = d.myCache.Get(cacheKey)
+		bytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, page, err
+		}
+
+		err = json.Unmarshal(bytes, &permissionData)
+		if err != nil {
+			return nil, page, err
+		}
+
+		defer resp.Body.Close()
+	}
+
 	sPage = strconv.Itoa(permissionData.Start)
 	nPage = strconv.Itoa(permissionData.NextPageStart)
 	if !permissionData.IsLastPage {
