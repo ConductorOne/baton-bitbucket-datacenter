@@ -951,22 +951,6 @@ func (d *DataCenterClient) GetGroupRepositoryPermissions(ctx context.Context, st
 
 	cacheKey := CreateCacheKey(req)
 	found := d.myCache.Has(cacheKey)
-	if !found {
-		resp, err := d.httpClient.Do(req, uhttp.WithJSONResponse(&permissionData))
-		if err != nil {
-			return nil, Page{}, &BitbucketError{
-				ErrorMessage:     err.Error(),
-				ErrorDescription: err.Error(),
-				ErrorCode:        resp.StatusCode,
-				ErrorSummary:     fmt.Sprint(resp.Body),
-				ErrorLink:        endpointUrl,
-			}
-		}
-
-		d.myCache.Set(cacheKey, resp)
-		defer resp.Body.Close()
-	}
-
 	if found {
 		resp = d.myCache.Get(cacheKey)
 		bytes, err := io.ReadAll(resp.Body)
@@ -979,6 +963,20 @@ func (d *DataCenterClient) GetGroupRepositoryPermissions(ctx context.Context, st
 			return nil, page, err
 		}
 
+		defer resp.Body.Close()
+	} else {
+		resp, err = d.httpClient.Do(req, uhttp.WithJSONResponse(&permissionData))
+		if err != nil {
+			return nil, Page{}, &BitbucketError{
+				ErrorMessage:     err.Error(),
+				ErrorDescription: err.Error(),
+				ErrorCode:        resp.StatusCode,
+				ErrorSummary:     fmt.Sprint(resp.Body),
+				ErrorLink:        endpointUrl,
+			}
+		}
+
+		d.myCache.Set(cacheKey, resp)
 		defer resp.Body.Close()
 	}
 
