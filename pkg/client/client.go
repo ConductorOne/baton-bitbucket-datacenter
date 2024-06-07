@@ -16,10 +16,10 @@ import (
 )
 
 type DataCenterClient struct {
-	auth       *auth
-	httpClient *uhttp.BaseHttpClient
-	baseUrl    string
-	myCache    GoCache
+	auth           *auth
+	httpClient     *uhttp.BaseHttpClient
+	baseUrl        string
+	bitbucketCache GoCache
 }
 
 type BitbucketError struct {
@@ -80,7 +80,7 @@ func NewClient() *DataCenterClient {
 			password:    "",
 			bearerToken: "",
 		},
-		myCache: NewGoCache(30, 30),
+		bitbucketCache: NewGoCache(30, 30),
 	}
 }
 
@@ -186,7 +186,7 @@ func New(ctx context.Context, baseUrl string, bitbucketClient *DataCenterClient)
 			password:    clientSecret,
 			bearerToken: clientToken,
 		},
-		myCache: NewGoCache(30, 30),
+		bitbucketCache: NewGoCache(30, 30),
 	}
 
 	return &dc, nil
@@ -916,6 +916,20 @@ func (d *DataCenterClient) ListGroupProjectsPermissions(ctx context.Context, opt
 	return permissions, nextPageToken, err
 }
 
+func WithResponse(resp *http.Response, v any) error {
+	bytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	err = json.Unmarshal(bytes, v)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (d *DataCenterClient) GetGroupRepositoryPermissions(ctx context.Context, startPage, limit, projectKey, repositorySlug string) ([]GroupsPermissions, Page, error) {
 	var (
 		permissionData GroupPermissionsAPIData
@@ -950,15 +964,10 @@ func (d *DataCenterClient) GetGroupRepositoryPermissions(ctx context.Context, st
 	}
 
 	cacheKey := CreateCacheKey(req)
-	found := d.myCache.Has(cacheKey)
+	found := d.bitbucketCache.Has(cacheKey)
 	if found {
-		resp = d.myCache.Get(cacheKey)
-		bytes, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return nil, page, err
-		}
-
-		err = json.Unmarshal(bytes, &permissionData)
+		resp = d.bitbucketCache.Get(cacheKey)
+		err := WithResponse(resp, &permissionData)
 		if err != nil {
 			return nil, page, err
 		}
@@ -976,7 +985,7 @@ func (d *DataCenterClient) GetGroupRepositoryPermissions(ctx context.Context, st
 			}
 		}
 
-		d.myCache.Set(cacheKey, resp)
+		d.bitbucketCache.Set(cacheKey, resp)
 		defer resp.Body.Close()
 	}
 
