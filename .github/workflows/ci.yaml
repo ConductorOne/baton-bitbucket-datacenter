@@ -40,42 +40,6 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:15
-        # Maps tcp port 5432 on service container to the host
-        ports:
-          - "5432:5432"
-        env:
-          POSTGRES_USER: bitbucket
-          POSTGRES_PASSWORD: ${{ secrets.DB_PASSWORD }}
-          POSTGRES_DB: bitbucket
-        # needed because the postgres container does not provide a healthcheck
-        options: >-
-          --health-cmd pg_isready 
-          --health-interval 10s 
-          --health-timeout 5s 
-          --health-retries 3
-          --health-start-period 90s
-
-      bitbucket:
-        image: atlassian/bitbucket-server:8.9.4
-        env:
-          JVM_MINIMUM_MEMORY: 2g
-          JVM_MAXIMUM_MEMORY: 4g
-          JDBC_DRIVER: org.postgresql.Driver
-          JDBC_USER: bitbucket
-          JDBC_PASSWORD: ${{ secrets.DB_PASSWORD }}
-          JDBC_URL: jdbc:postgresql://postgres:5432/bitbucket
-        ports:
-          - '7990:7990'
-        options: >-
-          --health-cmd "curl -f http://localhost:7990/"
-          --health-interval 10s 
-          --health-timeout 5s 
-          --health-retries 3
-          --health-start-period 90s
-
     env:
       BATON_LOG_LEVEL: debug
       # Add any environment variables needed to run baton-bitbucket-datacenter
@@ -94,14 +58,10 @@ jobs:
           go-version: 1.22.x
       - name: Checkout code
         uses: actions/checkout@v4
+      - name: Run Docker Compose as a Daemon (to start postgres and bitbucket)
+        run: docker-compose -f ./docker-compose.yml up --detach
       - name: Install baton
         run: ./scripts/get-baton.sh && mv baton /usr/local/bin
-      - name: Import sql into postgres
-        run: |
-          psql -h localhost --user bitbucket -f schema.sql
-          psql -h localhost --user bitbucket -f data.sql
-        env:
-          PGPASSWORD: ${{ secrets.DB_PASSWORD }}
       - name: Build baton-bitbucket-datacenter
         run: go build ./cmd/baton-bitbucket-datacenter
       - name: Wait for bitbucket to be up

@@ -54,3 +54,21 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      data-loader:
+        condition: service_completed_successfully
+
+  data-loader:
+    image: postgres:15
+    volumes:
+      - ./data:/data
+    networks:
+      - bitbucket-network
+    environment:
+      PGDATABASE: bitbucket
+      PGUSER: bitbucket
+      PGPASSWORD: bitbucket
+      PGHOST: postgres
+    command: sh ./data/load.sh
+    depends_on:
+      postgres:
+        condition: service_healthy
