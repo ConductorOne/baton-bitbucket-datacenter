@@ -108,8 +108,7 @@ jobs:
         run: ./scripts/health.sh ${{ env.BATON_BITBUCKETDC_BASEURL }}/status
       - name: Check bitbucket status
         id: out
-        run: |
-          status=$(curl -LI localhost:7990/status -o /dev/null -w '%{http_code}\n' -s); echo "status=$status" >> $GITHUB_OUTPUT
+        run: status=$(curl -LI localhost:7990/status -o /dev/null -w '%{http_code}\n' -s); echo "status=$status" >> $GITHUB_OUTPUT
       - name: fail on output
         if: steps.out.outputs.status != 200
         run: echo "bad status ${{ steps.out.outputs.status }}"; exit 1

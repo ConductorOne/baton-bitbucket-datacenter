@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -15,9 +16,10 @@ import (
 )
 
 type DataCenterClient struct {
-	auth       *auth
-	httpClient *uhttp.BaseHttpClient
-	baseUrl    string
+	auth           *auth
+	httpClient     *uhttp.BaseHttpClient
+	baseUrl        string
+	bitbucketCache GoCache
 }
 
 type BitbucketError struct {
@@ -78,6 +80,7 @@ func NewClient() *DataCenterClient {
 			password:    "",
 			bearerToken: "",
 		},
+		bitbucketCache: NewGoCache(30, 30),
 	}
 }
 
@@ -183,6 +186,7 @@ func New(ctx context.Context, baseUrl string, bitbucketClient *DataCenterClient)
 			password:    clientSecret,
 			bearerToken: clientToken,
 		},
+		bitbucketCache: NewGoCache(30, 30),
 	}
 
 	return &dc, nil
@@ -912,11 +916,26 @@ func (d *DataCenterClient) ListGroupProjectsPermissions(ctx context.Context, opt
 	return permissions, nextPageToken, err
 }
 
+func WithResponse(resp *http.Response, v any) error {
+	bytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	err = json.Unmarshal(bytes, v)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (d *DataCenterClient) GetGroupRepositoryPermissions(ctx context.Context, startPage, limit, projectKey, repositorySlug string) ([]GroupsPermissions, Page, error) {
 	var (
 		permissionData GroupPermissionsAPIData
 		page           Page
 		sPage, nPage   = "0", "0"
+		resp           *http.Response
 	)
 	endpointUrl := fmt.Sprintf("%s/%s/%s/repos/%s/%s", d.baseUrl,
 		allProjectsEndpoint,
@@ -944,18 +963,32 @@ func (d *DataCenterClient) GetGroupRepositoryPermissions(ctx context.Context, st
 		return nil, Page{}, err
 	}
 
-	resp, err := d.httpClient.Do(req, uhttp.WithJSONResponse(&permissionData))
-	if err != nil {
-		return nil, Page{}, &BitbucketError{
-			ErrorMessage:     err.Error(),
-			ErrorDescription: err.Error(),
-			ErrorCode:        resp.StatusCode,
-			ErrorSummary:     fmt.Sprint(resp.Body),
-			ErrorLink:        endpointUrl,
+	cacheKey := CreateCacheKey(req)
+	found := d.bitbucketCache.Has(cacheKey)
+	if found {
+		resp = d.bitbucketCache.Get(cacheKey)
+		err := WithResponse(resp, &permissionData)
+		if err != nil {
+			return nil, page, err
 		}
+
+		defer resp.Body.Close()
+	} else {
+		resp, err = d.httpClient.Do(req, uhttp.WithJSONResponse(&permissionData))
+		if err != nil {
+			return nil, Page{}, &BitbucketError{
+				ErrorMessage:     err.Error(),
+				ErrorDescription: err.Error(),
+				ErrorCode:        resp.StatusCode,
+				ErrorSummary:     fmt.Sprint(resp.Body),
+				ErrorLink:        endpointUrl,
+			}
+		}
+
+		d.bitbucketCache.Set(cacheKey, resp)
+		defer resp.Body.Close()
 	}
 
-	defer resp.Body.Close()
 	sPage = strconv.Itoa(permissionData.Start)
 	nPage = strconv.Itoa(permissionData.NextPageStart)
 	if !permissionData.IsLastPage {
