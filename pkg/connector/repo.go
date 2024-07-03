@@ -107,7 +107,7 @@ func (r *repoBuilder) Entitlements(_ context.Context, resource *v2.Resource, _ *
 		permissionOptions := []ent.EntitlementOption{
 			ent.WithGrantableTo(resourceTypeUser, resourceTypeGroup),
 			ent.WithDisplayName(fmt.Sprintf("%s Repository %s", resource.DisplayName, permission)),
-			ent.WithDescription(fmt.Sprintf("%s access to %s repository in Bitbucket DC", titleCase(permission), resource.DisplayName)),
+			ent.WithDescription(fmt.Sprintf("%s access to %s - %s repository in Bitbucket DC", titleCase(permission), resource.Id.Resource, resource.DisplayName)),
 		}
 		rv = append(rv, ent.NewPermissionEntitlement(
 			resource,
