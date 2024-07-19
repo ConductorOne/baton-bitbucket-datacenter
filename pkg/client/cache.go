@@ -17,8 +17,7 @@ type Cache interface {
 }
 
 func CreateCacheKey(req *http.Request) string {
-	s := req.URL.Scheme + "://" + req.URL.Host + req.URL.RequestURI()
-	return s
+	return req.URL.String()
 }
 
 func CopyResponse(resp *http.Response) *http.Response {
