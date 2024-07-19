@@ -13,6 +13,7 @@ import (
 
 	"github.com/conductorone/baton-sdk/pkg/uhttp"
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
+	"go.uber.org/zap"
 )
 
 type DataCenterClient struct {
@@ -80,7 +81,7 @@ func NewClient() *DataCenterClient {
 			password:    "",
 			bearerToken: "",
 		},
-		bitbucketCache: NewGoCache(30, 30),
+		bitbucketCache: NewGoCache(300, 300),
 	}
 }
 
@@ -192,6 +193,33 @@ func New(ctx context.Context, baseUrl string, bitbucketClient *DataCenterClient)
 	return &dc, nil
 }
 
+func (d *DataCenterClient) CachedGet(ctx context.Context, req *http.Request, options ...uhttp.DoOption) (*http.Response, error) {
+	l := ctxzap.Extract(ctx)
+	cacheKey := CreateCacheKey(req)
+
+	if d.bitbucketCache.Has(cacheKey) {
+		l.Debug("cache hit", zap.String("cacheKey", cacheKey))
+		resp := d.bitbucketCache.Get(cacheKey)
+		return resp, nil
+	}
+
+	l.Debug("cache miss", zap.String("cacheKey", cacheKey))
+	resp, err := d.httpClient.Do(req, options...)
+	if err != nil {
+		return nil, &BitbucketError{
+			ErrorMessage:     err.Error(),
+			ErrorDescription: err.Error(),
+			ErrorCode:        resp.StatusCode,
+			ErrorSummary:     fmt.Sprint(resp.Body),
+			ErrorLink:        req.URL.String(),
+		}
+	}
+
+	d.bitbucketCache.Set(cacheKey, resp)
+	defer resp.Body.Close()
+	return resp, nil
+}
+
 // GetUsers
 // Get all users. Only authenticated users may call this resource.
 // https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-system-maintenance/#api-api-latest-users-get
@@ -226,15 +254,13 @@ func (d *DataCenterClient) GetUsers(ctx context.Context, startPage, limit string
 		return nil, Page{}, err
 	}
 
-	resp, err := d.httpClient.Do(req, uhttp.WithJSONResponse(&userData))
+	resp, err := d.CachedGet(ctx, req, uhttp.WithJSONResponse(&userData))
 	if err != nil {
-		return nil, Page{}, &BitbucketError{
-			ErrorMessage:     err.Error(),
-			ErrorDescription: err.Error(),
-			ErrorCode:        resp.StatusCode,
-			ErrorSummary:     fmt.Sprint(resp.Body),
-			ErrorLink:        endpointUrl,
-		}
+		return nil, Page{}, err
+	}
+	err = WithResponse(resp, &userData)
+	if err != nil {
+		return nil, page, err
 	}
 
 	defer resp.Body.Close()
@@ -299,15 +325,13 @@ func (d *DataCenterClient) GetProjects(ctx context.Context, startPage, limit str
 		return nil, Page{}, err
 	}
 
-	resp, err := d.httpClient.Do(req, uhttp.WithJSONResponse(&projectData))
+	resp, err := d.CachedGet(ctx, req, uhttp.WithJSONResponse(&projectData))
 	if err != nil {
-		return nil, Page{}, &BitbucketError{
-			ErrorMessage:     err.Error(),
-			ErrorDescription: err.Error(),
-			ErrorCode:        resp.StatusCode,
-			ErrorSummary:     fmt.Sprint(resp.Body),
-			ErrorLink:        endpointUrl,
-		}
+		return nil, Page{}, err
+	}
+	err = WithResponse(resp, &projectData)
+	if err != nil {
+		return nil, page, err
 	}
 
 	defer resp.Body.Close()
@@ -369,15 +393,13 @@ func (d *DataCenterClient) GetRepos(ctx context.Context, startPage, limit string
 		return nil, Page{}, err
 	}
 
-	resp, err := d.httpClient.Do(req, uhttp.WithJSONResponse(&repoData))
+	resp, err := d.CachedGet(ctx, req, uhttp.WithJSONResponse(&repoData))
 	if err != nil {
-		return nil, Page{}, &BitbucketError{
-			ErrorMessage:     err.Error(),
-			ErrorDescription: err.Error(),
-			ErrorCode:        resp.StatusCode,
-			ErrorSummary:     fmt.Sprint(resp.Body),
-			ErrorLink:        endpointUrl,
-		}
+		return nil, Page{}, err
+	}
+	err = WithResponse(resp, &repoData)
+	if err != nil {
+		return nil, page, err
 	}
 
 	defer resp.Body.Close()
@@ -442,15 +464,13 @@ func (d *DataCenterClient) GetGroups(ctx context.Context, startPage, limit strin
 		return nil, Page{}, err
 	}
 
-	resp, err := d.httpClient.Do(req, uhttp.WithJSONResponse(&groupData))
+	resp, err := d.CachedGet(ctx, req, uhttp.WithJSONResponse(&groupData))
 	if err != nil {
-		return nil, Page{}, &BitbucketError{
-			ErrorMessage:     err.Error(),
-			ErrorDescription: err.Error(),
-			ErrorCode:        resp.StatusCode,
-			ErrorSummary:     fmt.Sprint(resp.Body),
-			ErrorLink:        endpointUrl,
-		}
+		return nil, Page{}, err
+	}
+	err = WithResponse(resp, &groupData)
+	if err != nil {
+		return nil, page, err
 	}
 
 	defer resp.Body.Close()
@@ -511,9 +531,13 @@ func (d *DataCenterClient) GetGroupMembers(ctx context.Context, startPage, limit
 		return nil, Page{}, err
 	}
 
-	resp, err := d.httpClient.Do(req, uhttp.WithJSONResponse(&memberData))
+	resp, err := d.CachedGet(ctx, req, uhttp.WithJSONResponse(&memberData))
 	if err != nil {
 		return nil, Page{}, err
+	}
+	err = WithResponse(resp, &memberData)
+	if err != nil {
+		return nil, page, err
 	}
 
 	defer resp.Body.Close()
@@ -593,15 +617,13 @@ func (d *DataCenterClient) GetGlobalUserPermissions(ctx context.Context, startPa
 		return nil, Page{}, err
 	}
 
-	resp, err := d.httpClient.Do(req, uhttp.WithJSONResponse(&permissionsData))
+	resp, err := d.CachedGet(ctx, req, uhttp.WithJSONResponse(&permissionsData))
 	if err != nil {
-		return nil, Page{}, &BitbucketError{
-			ErrorMessage:     err.Error(),
-			ErrorDescription: err.Error(),
-			ErrorCode:        resp.StatusCode,
-			ErrorSummary:     fmt.Sprint(resp.Body),
-			ErrorLink:        endpointUrl,
-		}
+		return nil, Page{}, err
+	}
+	err = WithResponse(resp, &permissionsData)
+	if err != nil {
+		return nil, page, err
 	}
 
 	defer resp.Body.Close()
@@ -649,14 +671,13 @@ func (d *DataCenterClient) GetGlobalGroupPermissions(ctx context.Context, startP
 		return nil, Page{}, err
 	}
 
-	resp, err := d.httpClient.Do(req, uhttp.WithJSONResponse(&permissionsData))
+	resp, err := d.CachedGet(ctx, req, uhttp.WithJSONResponse(&permissionsData))
 	if err != nil {
-		return nil, Page{}, &BitbucketError{
-			ErrorMessage:     err.Error(),
-			ErrorDescription: err.Error(),
-			ErrorCode:        resp.StatusCode,
-			ErrorSummary:     fmt.Sprint(resp.Body),
-		}
+		return nil, Page{}, err
+	}
+	err = WithResponse(resp, &permissionsData)
+	if err != nil {
+		return nil, page, err
 	}
 
 	defer resp.Body.Close()
@@ -742,9 +763,13 @@ func (d *DataCenterClient) GetUserRepositoryPermissions(ctx context.Context, sta
 		return nil, Page{}, err
 	}
 
-	resp, err := d.httpClient.Do(req, uhttp.WithJSONResponse(&permissionData))
+	resp, err := d.CachedGet(ctx, req, uhttp.WithJSONResponse(&permissionData))
 	if err != nil {
 		return nil, Page{}, err
+	}
+	err = WithResponse(resp, &permissionData)
+	if err != nil {
+		return nil, page, err
 	}
 
 	defer resp.Body.Close()
@@ -811,9 +836,13 @@ func (d *DataCenterClient) GetUserProjectsPermissions(ctx context.Context, start
 		return nil, Page{}, err
 	}
 
-	resp, err := d.httpClient.Do(req, uhttp.WithJSONResponse(&permissionData))
+	resp, err := d.CachedGet(ctx, req, uhttp.WithJSONResponse(&permissionData))
 	if err != nil {
 		return nil, Page{}, err
+	}
+	err = WithResponse(resp, &permissionData)
+	if err != nil {
+		return nil, page, err
 	}
 
 	defer resp.Body.Close()
@@ -861,9 +890,13 @@ func (d *DataCenterClient) GetGroupProjectsPermissions(ctx context.Context, star
 		return nil, Page{}, err
 	}
 
-	resp, err := d.httpClient.Do(req, uhttp.WithJSONResponse(&permissionData))
+	resp, err := d.CachedGet(ctx, req, uhttp.WithJSONResponse(&permissionData))
 	if err != nil {
 		return nil, Page{}, err
+	}
+	err = WithResponse(resp, &permissionData)
+	if err != nil {
+		return nil, page, err
 	}
 
 	defer resp.Body.Close()
@@ -935,7 +968,6 @@ func (d *DataCenterClient) GetGroupRepositoryPermissions(ctx context.Context, st
 		permissionData GroupPermissionsAPIData
 		page           Page
 		sPage, nPage   = "0", "0"
-		resp           *http.Response
 	)
 	endpointUrl := fmt.Sprintf("%s/%s/%s/repos/%s/%s", d.baseUrl,
 		allProjectsEndpoint,
@@ -963,32 +995,16 @@ func (d *DataCenterClient) GetGroupRepositoryPermissions(ctx context.Context, st
 		return nil, Page{}, err
 	}
 
-	cacheKey := CreateCacheKey(req)
-	found := d.bitbucketCache.Has(cacheKey)
-	if found {
-		resp = d.bitbucketCache.Get(cacheKey)
-		err := WithResponse(resp, &permissionData)
-		if err != nil {
-			return nil, page, err
-		}
-
-		defer resp.Body.Close()
-	} else {
-		resp, err = d.httpClient.Do(req, uhttp.WithJSONResponse(&permissionData))
-		if err != nil {
-			return nil, Page{}, &BitbucketError{
-				ErrorMessage:     err.Error(),
-				ErrorDescription: err.Error(),
-				ErrorCode:        resp.StatusCode,
-				ErrorSummary:     fmt.Sprint(resp.Body),
-				ErrorLink:        endpointUrl,
-			}
-		}
-
-		d.bitbucketCache.Set(cacheKey, resp)
-		defer resp.Body.Close()
+	resp, err := d.CachedGet(ctx, req, uhttp.WithJSONResponse(&permissionData))
+	if err != nil {
+		return nil, Page{}, err
+	}
+	err = WithResponse(resp, &permissionData)
+	if err != nil {
+		return nil, page, err
 	}
 
+	defer resp.Body.Close()
 	sPage = strconv.Itoa(permissionData.Start)
 	nPage = strconv.Itoa(permissionData.NextPageStart)
 	if !permissionData.IsLastPage {
