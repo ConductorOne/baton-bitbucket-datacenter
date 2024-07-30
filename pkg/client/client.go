@@ -193,6 +193,27 @@ func New(ctx context.Context, baseUrl string, bitbucketClient *DataCenterClient)
 	return &dc, nil
 }
 
+func GetCustomErr(req *http.Request, resp *http.Response, err error) *BitbucketError {
+	bbErr := &BitbucketError{
+		ErrorMessage:     err.Error(),
+		ErrorDescription: err.Error(),
+		ErrorLink:        req.URL.String(),
+	}
+
+	if resp != nil {
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			bbErr.ErrorSummary = fmt.Sprintf("Error reading response body %s", err.Error())
+			return bbErr
+		}
+
+		bbErr.ErrorCode = resp.StatusCode
+		bbErr.ErrorSummary = string(bodyBytes)
+	}
+
+	return bbErr
+}
+
 func (d *DataCenterClient) CachedGet(ctx context.Context, req *http.Request, options ...uhttp.DoOption) (*http.Response, error) {
 	l := ctxzap.Extract(ctx)
 	cacheKey := CreateCacheKey(req)
@@ -206,16 +227,7 @@ func (d *DataCenterClient) CachedGet(ctx context.Context, req *http.Request, opt
 	l.Debug("cache miss", zap.String("cacheKey", cacheKey))
 	resp, err := d.httpClient.Do(req, options...)
 	if err != nil {
-		bbErr := &BitbucketError{
-			ErrorMessage:     err.Error(),
-			ErrorDescription: err.Error(),
-			ErrorLink:        req.URL.String(),
-		}
-		if resp != nil {
-			bbErr.ErrorCode = resp.StatusCode
-			bbErr.ErrorSummary = fmt.Sprint(resp.Body)
-		}
-		return nil, bbErr
+		return nil, GetCustomErr(req, resp, err)
 	}
 
 	d.bitbucketCache.Set(cacheKey, resp)
@@ -1212,16 +1224,7 @@ func (d *DataCenterClient) UpdateGroupRepositoryPermission(ctx context.Context, 
 
 	resp, err := d.httpClient.Do(req)
 	if err != nil {
-		bbErr := &BitbucketError{
-			ErrorMessage:     err.Error(),
-			ErrorDescription: err.Error(),
-			ErrorLink:        endpointUrl,
-		}
-		if resp != nil {
-			bbErr.ErrorCode = resp.StatusCode
-			bbErr.ErrorSummary = fmt.Sprint(resp.Body)
-		}
-		return bbErr
+		return GetCustomErr(req, resp, err)
 	}
 
 	defer resp.Body.Close()
@@ -1379,16 +1382,7 @@ func (d *DataCenterClient) RevokeGroupProjectPermission(ctx context.Context, pro
 
 	resp, err := d.httpClient.Do(req)
 	if err != nil {
-		bbErr := &BitbucketError{
-			ErrorMessage:     err.Error(),
-			ErrorDescription: err.Error(),
-			ErrorLink:        endpointUrl,
-		}
-		if resp != nil {
-			bbErr.ErrorCode = resp.StatusCode
-			bbErr.ErrorSummary = fmt.Sprint(resp.Body)
-		}
-		return bbErr
+		return GetCustomErr(req, resp, err)
 	}
 
 	defer resp.Body.Close()
@@ -1468,16 +1462,7 @@ func (d *DataCenterClient) UpdateGroupProjectPermission(ctx context.Context, pro
 
 	resp, err := d.httpClient.Do(req)
 	if err != nil {
-		bbErr := &BitbucketError{
-			ErrorMessage:     err.Error(),
-			ErrorDescription: err.Error(),
-			ErrorLink:        endpointUrl,
-		}
-		if resp != nil {
-			bbErr.ErrorCode = resp.StatusCode
-			bbErr.ErrorSummary = fmt.Sprint(resp.Body)
-		}
-		return bbErr
+		return GetCustomErr(req, resp, err)
 	}
 
 	defer resp.Body.Close()
