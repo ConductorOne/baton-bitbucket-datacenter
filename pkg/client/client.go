@@ -194,6 +194,13 @@ func New(ctx context.Context, baseUrl string, bitbucketClient *DataCenterClient)
 }
 
 func GetCustomErr(req *http.Request, resp *http.Response, err error) *BitbucketError {
+	if req == nil {
+		return &BitbucketError{
+			ErrorMessage:     "Unknown error",
+			ErrorDescription: "request should not be nil",
+		}
+	}
+
 	bbErr := &BitbucketError{
 		ErrorMessage:     err.Error(),
 		ErrorDescription: err.Error(),
@@ -201,13 +208,13 @@ func GetCustomErr(req *http.Request, resp *http.Response, err error) *BitbucketE
 	}
 
 	if resp != nil {
+		bbErr.ErrorCode = resp.StatusCode
 		bodyBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
 			bbErr.ErrorSummary = fmt.Sprintf("Error reading response body %s", err.Error())
 			return bbErr
 		}
 
-		bbErr.ErrorCode = resp.StatusCode
 		bbErr.ErrorSummary = string(bodyBytes)
 	}
 
