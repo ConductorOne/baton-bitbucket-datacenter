@@ -187,7 +187,7 @@ func New(ctx context.Context, baseUrl string, bitbucketClient *DataCenterClient)
 			password:    clientSecret,
 			bearerToken: clientToken,
 		},
-		bitbucketCache: NewGoCache(30, 30),
+		bitbucketCache: NewGoCache(3600, 60),
 	}
 
 	return &dc, nil
