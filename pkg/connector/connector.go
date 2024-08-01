@@ -11,17 +11,21 @@ import (
 )
 
 type Connector struct {
-	client *client.DataCenterClient
+	client    *client.DataCenterClient
+	skipRepos bool
 }
 
 // ResourceSyncers returns a ResourceSyncer for each resource type that should be synced from the upstream service.
 func (c *Connector) ResourceSyncers(ctx context.Context) []connectorbuilder.ResourceSyncer {
-	return []connectorbuilder.ResourceSyncer{
+	resourceSyncers := []connectorbuilder.ResourceSyncer{
 		newUserBuilder(c.client),
 		newProjectBuilder(c.client),
-		newRepoBuilder(c.client),
 		newGroupBuilder(c.client),
 	}
+	if !c.skipRepos {
+		resourceSyncers = append(resourceSyncers, newRepoBuilder(c.client))
+	}
+	return resourceSyncers
 }
 
 // Asset takes an input AssetRef and attempts to fetch it using the connector's authenticated http client
@@ -45,7 +49,7 @@ func (c *Connector) Validate(ctx context.Context) (annotations.Annotations, erro
 }
 
 // New returns a new instance of the connector.
-func New(ctx context.Context, baseUrl string, bitbucketClient *client.DataCenterClient) (*Connector, error) {
+func New(ctx context.Context, baseUrl string, bitbucketClient *client.DataCenterClient, skipRepos bool) (*Connector, error) {
 	var err error
 	if bitbucketClient.CheckCredentials() {
 		bitbucketClient, err = client.New(ctx, baseUrl, bitbucketClient)
@@ -55,6 +59,7 @@ func New(ctx context.Context, baseUrl string, bitbucketClient *client.DataCenter
 	}
 
 	return &Connector{
-		client: bitbucketClient,
+		client:    bitbucketClient,
+		skipRepos: skipRepos,
 	}, nil
 }

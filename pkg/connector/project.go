@@ -91,7 +91,6 @@ func (p *projectBuilder) List(ctx context.Context, parentResourceID *v2.Resource
 	return rv, nextPageToken, nil, nil
 }
 
-// Entitlements always returns an empty slice for users.
 func (p *projectBuilder) Entitlements(_ context.Context, resource *v2.Resource, _ *pagination.Token) ([]*v2.Entitlement, string, annotations.Annotations, error) {
 	var rv []*v2.Entitlement
 	// create entitlements for each project role (read, write, create, admin)

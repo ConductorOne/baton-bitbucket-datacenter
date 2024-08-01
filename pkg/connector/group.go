@@ -85,7 +85,6 @@ func (g *groupBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId
 	return rv, nextPageToken, nil, nil
 }
 
-// Entitlements always returns an empty slice for users.
 func (g *groupBuilder) Entitlements(ctx context.Context, resource *v2.Resource, pToken *pagination.Token) ([]*v2.Entitlement, string, annotations.Annotations, error) {
 	var (
 		pageToken              int

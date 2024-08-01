@@ -99,7 +99,6 @@ func (r *repoBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId,
 	return rv, nextPageToken, nil, nil
 }
 
-// Entitlements always returns an empty slice for users.
 func (r *repoBuilder) Entitlements(_ context.Context, resource *v2.Resource, _ *pagination.Token) ([]*v2.Entitlement, string, annotations.Annotations, error) {
 	var rv []*v2.Entitlement
 	// create entitlements for each repository role (read, write, admin)
