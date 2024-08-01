@@ -1,36 +1,46 @@
 package main
 
 import (
-	"context"
-	"fmt"
-
-	"github.com/conductorone/baton-sdk/pkg/cli"
+	"github.com/conductorone/baton-sdk/pkg/field"
 )
 
-// config defines the external configuration required for the connector to run.
-type config struct {
-	cli.BaseConfig    `mapstructure:",squash"` // Puts the base config options in the same place as the connector options
-	BitbucketUsername string                   `mapstructure:"bitbucketdc-username" description:"Username of administrator used to connect to the BitBucketDC API."`
-	BitbucketPassword string                   `mapstructure:"bitbucketdc-password" description:"Application password used to connect to the BitBucketDC API."`
-	BitbucketBaseUrl  string                   `mapstructure:"bitbucketdc-baseurl" description:"Bitbucket Data Center server. example http://localhost:7990." defaultValue:"http://localhost:7990"`
-	BitbucketToken    string                   `mapstructure:"bitbucketdc-token" description:"HTTP access tokens in Bitbucket Data Center"`
+var (
+	BitbucketUsername = field.StringField(
+		"bitbucketdc-username",
+		field.WithDescription("Username of administrator used to connect to the BitBucketDC API."),
+	)
+	BitbucketPassword = field.StringField(
+		"bitbucketdc-password",
+		field.WithDescription("Application password used to connect to the BitBucketDC API."),
+	)
+	BitbucketBaseUrl = field.StringField(
+		"bitbucketdc-baseurl",
+		field.WithDescription("Bitbucket Data Center server. example http://localhost:7990."),
+		field.WithRequired(true),
+		field.WithDefaultValue("http://localhost:7990"),
+	)
+	BitbucketToken = field.StringField(
+		"bitbucketdc-token",
+		field.WithDescription("HTTP access tokens in Bitbucket Data Center"),
+	)
+	SkipRepos = field.BoolField(
+		"skip-repos",
+		field.WithDescription("Skip repositories"),
+	)
+)
+
+var fields = []field.SchemaField{
+	BitbucketUsername,
+	BitbucketPassword,
+	BitbucketBaseUrl,
+	BitbucketToken,
+	SkipRepos,
 }
 
-// validateConfig is run after the configuration is loaded, and should return an error if it isn't valid.
-func validateConfig(ctx context.Context, cfg *config) error {
-	if cfg.BitbucketBaseUrl == "" {
-		return fmt.Errorf("bitbucketdc-baseurl must be provided")
-	}
-
-	if cfg.BitbucketToken == "" {
-		if cfg.BitbucketUsername == "" || cfg.BitbucketPassword == "" {
-			return fmt.Errorf("either bitbucketdc-token or (bitbucketdc-username/bitbucketdc-password) must be provided")
-		}
-	}
-
-	if cfg.BitbucketToken != "" && cfg.BitbucketUsername != "" && cfg.BitbucketPassword != "" {
-		return fmt.Errorf("bitbucketdc-token, and (bitbucketdc-username/bitbucketdc-password) cannot be provided simultaneously")
-	}
-
-	return nil
+var constraints = []field.SchemaFieldRelationship{
+	field.FieldsRequiredTogether(BitbucketUsername, BitbucketPassword),
+	field.FieldsMutuallyExclusive(BitbucketToken, BitbucketUsername),
+	field.FieldsMutuallyExclusive(BitbucketToken, BitbucketPassword),
 }
+
+var cfg = field.NewConfiguration(fields, constraints...)

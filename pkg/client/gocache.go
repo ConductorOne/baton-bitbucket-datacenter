@@ -11,18 +11,18 @@ import (
 )
 
 type GoCache struct {
-	ttl         time.Duration
-	tti         time.Duration
-	rootLibrary *connGoCache.Cache
+	ttl             time.Duration
+	cleanupInterval time.Duration
+	rootLibrary     *connGoCache.Cache
 }
 
-func NewGoCache(ttl int32, tti int32) GoCache {
-	c := connGoCache.New(time.Duration(ttl)*time.Second, time.Duration(tti)*time.Second)
+func NewGoCache(ttl int32, cleanupInterval int32) GoCache {
+	c := connGoCache.New(time.Duration(ttl)*time.Second, time.Duration(cleanupInterval)*time.Second)
 
 	gc := GoCache{
-		ttl:         time.Duration(ttl) * time.Second,
-		tti:         time.Duration(tti) * time.Second,
-		rootLibrary: c,
+		ttl:             time.Duration(ttl) * time.Second,
+		cleanupInterval: time.Duration(cleanupInterval) * time.Second,
+		rootLibrary:     c,
 	}
 
 	return gc
