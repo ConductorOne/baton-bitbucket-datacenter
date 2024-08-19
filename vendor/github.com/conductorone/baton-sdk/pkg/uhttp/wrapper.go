@@ -74,12 +74,20 @@ func NewBaseHttpClientWithContext(ctx context.Context, httpClient *http.Client) 
 	if err != nil {
 		disableCache = false
 	}
+	cacheMaxSize, err := strconv.ParseInt(os.Getenv("BATON_HTTP_CACHE_MAX_SIZE"), 10, 64)
+	if err != nil {
+		cacheMaxSize = 128 // MB
+	}
+	cacheTTL, err := strconv.ParseInt(os.Getenv("BATON_HTTP_CACHE_TTL"), 10, 64)
+	if err != nil {
+		cacheTTL = 3600 // seconds
+	}
 
 	var (
 		config = CacheConfig{
 			LogDebug:     l.Level().Enabled(zap.DebugLevel),
-			CacheTTL:     int32(3600), // seconds
-			CacheMaxSize: int(2048),   // MB
+			CacheTTL:     int32(cacheTTL),   // seconds
+			CacheMaxSize: int(cacheMaxSize), // MB
 			DisableCache: disableCache,
 		}
 		ok bool
@@ -196,6 +204,7 @@ func (c *BaseHttpClient) Do(req *http.Request, options ...DoOption) (*http.Respo
 	var (
 		cacheKey string
 		err      error
+		resp     *http.Response
 	)
 	l := ctxzap.Extract(req.Context())
 	if req.Method == http.MethodGet {
@@ -204,30 +213,31 @@ func (c *BaseHttpClient) Do(req *http.Request, options ...DoOption) (*http.Respo
 			return nil, err
 		}
 
-		resp, err := c.baseHttpCache.Get(cacheKey)
+		resp, err = c.baseHttpCache.Get(cacheKey)
 		if err != nil {
 			return nil, err
 		}
-		if resp != nil {
+		if resp == nil {
+			l.Debug("http cache miss", zap.String("cacheKey", cacheKey), zap.String("url", req.URL.String()))
+		} else {
 			l.Debug("http cache hit", zap.String("cacheKey", cacheKey), zap.String("url", req.URL.String()))
-			return resp, nil
 		}
-
-		l.Debug("http cache miss", zap.String("cacheKey", cacheKey), zap.String("url", req.URL.String()))
 	}
 
-	resp, err := c.HttpClient.Do(req)
-	if err != nil {
-		var urlErr *url.Error
-		if errors.As(err, &urlErr) {
-			if urlErr.Timeout() {
-				return nil, status.Error(codes.DeadlineExceeded, fmt.Sprintf("request timeout: %v", urlErr.URL))
+	if resp == nil {
+		resp, err = c.HttpClient.Do(req)
+		if err != nil {
+			var urlErr *url.Error
+			if errors.As(err, &urlErr) {
+				if urlErr.Timeout() {
+					return nil, status.Error(codes.DeadlineExceeded, fmt.Sprintf("request timeout: %v", urlErr.URL))
+				}
 			}
+			if errors.Is(err, context.DeadlineExceeded) {
+				return nil, status.Error(codes.DeadlineExceeded, "request timeout")
+			}
+			return nil, err
 		}
-		if errors.Is(err, context.DeadlineExceeded) {
-			return nil, status.Error(codes.DeadlineExceeded, "request timeout")
-		}
-		return nil, err
 	}
 
 	defer resp.Body.Close()
