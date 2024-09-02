@@ -14,7 +14,7 @@ import (
 	"strconv"
 
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
-	"github.com/conductorone/baton-sdk/pkg/helpers"
+	"github.com/conductorone/baton-sdk/pkg/ratelimit"
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
@@ -28,6 +28,8 @@ const (
 	applicationFormUrlencoded = "application/x-www-form-urlencoded"
 	applicationVndApiJSON     = "application/vnd.api+json"
 	acceptHeader              = "Accept"
+	cacheTTLMaximum           = 31536000 // 31536000 seconds = one year
+	cacheTTLDefault           = 3600     // 3600 seconds = one hour
 )
 
 type WrapperResponse struct {
@@ -68,18 +70,37 @@ func NewBaseHttpClient(httpClient *http.Client) *BaseHttpClient {
 	return client
 }
 
+// getCacheTTL read the `BATON_HTTP_CACHE_TTL` environment variable and return
+// the value as a number of seconds between 0 and an arbitrary maximum. Note:
+// this means that passing a value of `-1` will set the TTL to zero rather than
+// infinity.
+func getCacheTTL() int32 {
+	cacheTTL, err := strconv.ParseInt(os.Getenv("BATON_HTTP_CACHE_TTL"), 10, 64)
+	if err != nil {
+		cacheTTL = cacheTTLDefault // seconds
+	}
+
+	cacheTTL = min(cacheTTLMaximum, max(0, cacheTTL))
+
+	//nolint:gosec // No risk of overflow because we have a low maximum.
+	return int32(cacheTTL)
+}
+
 func NewBaseHttpClientWithContext(ctx context.Context, httpClient *http.Client) (*BaseHttpClient, error) {
 	l := ctxzap.Extract(ctx)
 	disableCache, err := strconv.ParseBool(os.Getenv("BATON_DISABLE_HTTP_CACHE"))
 	if err != nil {
 		disableCache = false
 	}
-
+	cacheMaxSize, err := strconv.ParseInt(os.Getenv("BATON_HTTP_CACHE_MAX_SIZE"), 10, 64)
+	if err != nil {
+		cacheMaxSize = 128 // MB
+	}
 	var (
 		config = CacheConfig{
 			LogDebug:     l.Level().Enabled(zap.DebugLevel),
-			CacheTTL:     int32(3600), // seconds
-			CacheMaxSize: int(2048),   // MB
+			CacheTTL:     getCacheTTL(),     // seconds
+			CacheMaxSize: int(cacheMaxSize), // MB
 			DisableCache: disableCache,
 		}
 		ok bool
@@ -107,7 +128,7 @@ func NewBaseHttpClientWithContext(ctx context.Context, httpClient *http.Client) 
 // status code 204 No Content), then pass a `nil` to `response`.
 func WithJSONResponse(response interface{}) DoOption {
 	return func(resp *WrapperResponse) error {
-		if !helpers.IsJSONContentType(resp.Header.Get(ContentType)) {
+		if !IsJSONContentType(resp.Header.Get(ContentType)) {
 			return fmt.Errorf("unexpected content type for json response: %s", resp.Header.Get(ContentType))
 		}
 		if response == nil && len(resp.Body) == 0 {
@@ -131,7 +152,7 @@ func WithErrorResponse(resource ErrorResponse) DoOption {
 			return nil
 		}
 
-		if !helpers.IsJSONContentType(resp.Header.Get(ContentType)) {
+		if !IsJSONContentType(resp.Header.Get(ContentType)) {
 			return fmt.Errorf("%v", string(resp.Body))
 		}
 
@@ -149,7 +170,7 @@ func WithErrorResponse(resource ErrorResponse) DoOption {
 
 func WithRatelimitData(resource *v2.RateLimitDescription) DoOption {
 	return func(resp *WrapperResponse) error {
-		rl, err := helpers.ExtractRateLimitData(resp.StatusCode, &resp.Header)
+		rl, err := ratelimit.ExtractRateLimitData(resp.StatusCode, &resp.Header)
 		if err != nil {
 			return err
 		}
@@ -165,7 +186,7 @@ func WithRatelimitData(resource *v2.RateLimitDescription) DoOption {
 
 func WithXMLResponse(response interface{}) DoOption {
 	return func(resp *WrapperResponse) error {
-		if !helpers.IsXMLContentType(resp.Header.Get(ContentType)) {
+		if !IsXMLContentType(resp.Header.Get(ContentType)) {
 			return fmt.Errorf("unexpected content type for xml response: %s", resp.Header.Get(ContentType))
 		}
 		if response == nil && len(resp.Body) == 0 {
@@ -181,10 +202,10 @@ func WithXMLResponse(response interface{}) DoOption {
 
 func WithResponse(response interface{}) DoOption {
 	return func(resp *WrapperResponse) error {
-		if helpers.IsJSONContentType(resp.Header.Get(ContentType)) {
+		if IsJSONContentType(resp.Header.Get(ContentType)) {
 			return WithJSONResponse(response)(resp)
 		}
-		if helpers.IsXMLContentType(resp.Header.Get(ContentType)) {
+		if IsXMLContentType(resp.Header.Get(ContentType)) {
 			return WithXMLResponse(response)(resp)
 		}
 
@@ -196,6 +217,7 @@ func (c *BaseHttpClient) Do(req *http.Request, options ...DoOption) (*http.Respo
 	var (
 		cacheKey string
 		err      error
+		resp     *http.Response
 	)
 	l := ctxzap.Extract(req.Context())
 	if req.Method == http.MethodGet {
@@ -204,30 +226,31 @@ func (c *BaseHttpClient) Do(req *http.Request, options ...DoOption) (*http.Respo
 			return nil, err
 		}
 
-		resp, err := c.baseHttpCache.Get(cacheKey)
+		resp, err = c.baseHttpCache.Get(cacheKey)
 		if err != nil {
 			return nil, err
 		}
-		if resp != nil {
+		if resp == nil {
+			l.Debug("http cache miss", zap.String("cacheKey", cacheKey), zap.String("url", req.URL.String()))
+		} else {
 			l.Debug("http cache hit", zap.String("cacheKey", cacheKey), zap.String("url", req.URL.String()))
-			return resp, nil
 		}
-
-		l.Debug("http cache miss", zap.String("cacheKey", cacheKey), zap.String("url", req.URL.String()))
 	}
 
-	resp, err := c.HttpClient.Do(req)
-	if err != nil {
-		var urlErr *url.Error
-		if errors.As(err, &urlErr) {
-			if urlErr.Timeout() {
-				return nil, status.Error(codes.DeadlineExceeded, fmt.Sprintf("request timeout: %v", urlErr.URL))
+	if resp == nil {
+		resp, err = c.HttpClient.Do(req)
+		if err != nil {
+			var urlErr *url.Error
+			if errors.As(err, &urlErr) {
+				if urlErr.Timeout() {
+					return nil, status.Error(codes.DeadlineExceeded, fmt.Sprintf("request timeout: %v", urlErr.URL))
+				}
 			}
+			if errors.Is(err, context.DeadlineExceeded) {
+				return nil, status.Error(codes.DeadlineExceeded, "request timeout")
+			}
+			return nil, err
 		}
-		if errors.Is(err, context.DeadlineExceeded) {
-			return nil, status.Error(codes.DeadlineExceeded, "request timeout")
-		}
-		return nil, err
 	}
 
 	defer resp.Body.Close()
