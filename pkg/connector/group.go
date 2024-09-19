@@ -58,7 +58,6 @@ func (g *groupBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId
 		PerPage: ITEMSPERPAGE,
 		Page:    pageToken,
 	})
-	err = checkStatusUnauthorizedError(ctx, err)
 	if err != nil {
 		return nil, "", nil, err
 	}
@@ -256,14 +255,12 @@ func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 	case resourceTypeUser.Id:
 		// Get user permissions
 		userPermissions, err := listGlobalUserPermissions(ctx, g.client)
-		err = checkStatusUnauthorizedError(ctx, err)
 		if err != nil {
 			return nil, "", nil, err
 		}
 
 		// Get group permissions
 		groupPermissions, err := listGlobalGroupPermissions(ctx, g.client)
-		err = checkStatusUnauthorizedError(ctx, err)
 		if err != nil {
 			return nil, "", nil, err
 		}
@@ -405,7 +402,6 @@ func (g *groupBuilder) Grant(ctx context.Context, principal *v2.Resource, entitl
 		}
 
 		groupRepositoryPermissions, err := listGroupRepositoryPermissions(ctx, g.client, projectKey, repoSlug)
-		err = checkStatusUnauthorizedError(ctx, err)
 		if err != nil {
 			return nil, err
 		}
@@ -562,7 +558,6 @@ func (g *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations
 		}
 
 		groupRepositoryPermissions, err := listGroupRepositoryPermissions(ctx, g.client, projectKey, repoSlug)
-		err = checkStatusUnauthorizedError(ctx, err)
 		if err != nil {
 			return nil, err
 		}

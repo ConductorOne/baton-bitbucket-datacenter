@@ -64,7 +64,6 @@ func (p *projectBuilder) List(ctx context.Context, parentResourceID *v2.Resource
 		PerPage: ITEMSPERPAGE,
 		Page:    pageToken,
 	})
-	err = checkStatusUnauthorizedError(ctx, err)
 	if err != nil {
 		return nil, "", nil, err
 	}
