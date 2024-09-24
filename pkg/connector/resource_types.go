@@ -21,9 +21,7 @@ var (
 	resourceTypeProject = &v2.ResourceType{
 		Id:          "project",
 		DisplayName: "Project",
-		Traits: []v2.ResourceType_Trait{
-			v2.ResourceType_TRAIT_GROUP,
-		},
+		Traits:      []v2.ResourceType_Trait{},
 	}
 	resourceTypeRepository = &v2.ResourceType{
 		Id:          "repository",
@@ -36,5 +34,10 @@ var (
 		Traits: []v2.ResourceType_Trait{
 			v2.ResourceType_TRAIT_GROUP,
 		},
+	}
+	resourceTypeOrg = &v2.ResourceType{
+		Id:          "org",
+		DisplayName: "Organization",
+		Traits:      []v2.ResourceType_Trait{},
 	}
 )

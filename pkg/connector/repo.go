@@ -170,14 +170,18 @@ func (r *repoBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken 
 
 		// create a permission grant for each group in the repository
 		for _, member := range groupsPermissions {
-			grpCppy := member.Group
-			ur, err := groupResource(ctx, grpCppy.Name, resource.Id)
+			gr, err := groupResource(ctx, member.Group.Name, nil)
 			if err != nil {
-				return nil, "", nil, fmt.Errorf("error creating group resource for repository %s: %w", resource.Id.Resource, err)
+				return nil, "", nil, fmt.Errorf("error creating group resource %s for repository %s: %w", member.Group.Name, resource.Id.Resource, err)
 			}
 
-			membershipGrant := grant.NewGrant(resource, member.Permission, ur.Id)
-			rv = append(rv, membershipGrant)
+			grantOpt := grant.WithAnnotation(&v2.GrantExpandable{
+				EntitlementIds: []string{
+					fmt.Sprintf("group:%s:member", gr.Id.Resource),
+				},
+			})
+			permissionGrant := grant.NewGrant(resource, member.Permission, gr.Id, grantOpt)
+			rv = append(rv, permissionGrant)
 		}
 	case resourceTypeUser.Id:
 		usersPermissions, nextPageToken, err = r.client.ListUserRepositoryPermissions(ctx, client.PageOptions{
@@ -227,17 +231,15 @@ func (r *repoBuilder) Grant(ctx context.Context, principal *v2.Resource, entitle
 		return nil, fmt.Errorf("bitbucker(bk)-connector: only users or groups can be granted repo membership")
 	}
 
-	_, permissions, err := ParseEntitlementID(entitlement.Id)
+	_, permission, err := ParseEntitlementID(entitlement.Id)
 	if err != nil {
 		return nil, err
 	}
 
-	var permission string
-	switch permissions[len(permissions)-1] {
+	switch permission {
 	case roleRepoWrite, roleRepoAdmin, roleRepoRead:
-		permission = permissions[len(permissions)-1]
 	default:
-		return nil, fmt.Errorf("bitbucket(dc) connector: invalid permission type: %s", permissions[len(permissions)-1])
+		return nil, fmt.Errorf("bitbucket(dc) connector: invalid permission type: %s", permission)
 	}
 
 	projectKey, repoSlug, err := parseRepositoryID(entitlement.Resource.Id.Resource)

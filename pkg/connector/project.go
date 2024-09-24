@@ -159,14 +159,18 @@ func (p *projectBuilder) Grants(ctx context.Context, resource *v2.Resource, pTok
 		}
 
 		for _, member := range groupsPermissions {
-			grpCppy := member.Group
-			gr, err := groupResource(ctx, grpCppy.Name, resource.Id)
+			gr, err := groupResource(ctx, member.Group.Name, nil)
 			if err != nil {
-				return nil, "", nil, fmt.Errorf("error creating group resource for project %s: %w", resource.Id.Resource, err)
+				return nil, "", nil, fmt.Errorf("error creating group resource %s for project %s: %w", member.Group.Name, resource.Id.Resource, err)
 			}
 
-			membershipGrant := grant.NewGrant(resource, member.Permission, gr.Id)
-			rv = append(rv, membershipGrant)
+			grantOpt := grant.WithAnnotation(&v2.GrantExpandable{
+				EntitlementIds: []string{
+					fmt.Sprintf("group:%s:member", gr.Id.Resource),
+				},
+			})
+			permissionGrant := grant.NewGrant(resource, member.Permission, gr.Id, grantOpt)
+			rv = append(rv, permissionGrant)
 		}
 	case resourceTypeUser.Id:
 		usersPermissions, nextPageToken, err = p.client.ListUserProjectsPermissions(ctx, client.PageOptions{
@@ -213,7 +217,6 @@ func (p *projectBuilder) Grants(ctx context.Context, resource *v2.Resource, pTok
 }
 
 func (p *projectBuilder) Grant(ctx context.Context, principal *v2.Resource, entitlement *v2.Entitlement) (annotations.Annotations, error) {
-	var permission string
 	l := ctxzap.Extract(ctx)
 	if principal.Id.ResourceType != resourceTypeUser.Id && principal.Id.ResourceType != resourceTypeGroup.Id {
 		l.Warn(
@@ -224,16 +227,15 @@ func (p *projectBuilder) Grant(ctx context.Context, principal *v2.Resource, enti
 		return nil, fmt.Errorf("bitbucket(dc)-connector: only users or groups can be granted project membership")
 	}
 
-	_, permissions, err := ParseEntitlementID(entitlement.Id)
+	_, permission, err := ParseEntitlementID(entitlement.Id)
 	if err != nil {
 		return nil, err
 	}
 
-	switch permissions[len(permissions)-1] {
+	switch permission {
 	case roleProjectCreate, roleProjectWrite, roleProjectAdmin, roleProjectRead, roleRepoCreate:
-		permission = permissions[len(permissions)-1]
 	default:
-		return nil, fmt.Errorf("bitbucket(dc)-connector: invalid permission type: %s", permissions[len(permissions)-1])
+		return nil, fmt.Errorf("bitbucket(dc)-connector: invalid permission type: %s", permission)
 	}
 
 	projectKey := entitlement.Resource.Id.Resource
@@ -309,7 +311,6 @@ func (p *projectBuilder) Grant(ctx context.Context, principal *v2.Resource, enti
 }
 
 func (p *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.Annotations, error) {
-	var permission string
 	l := ctxzap.Extract(ctx)
 	principal := grant.Principal
 	entitlement := grant.Entitlement
@@ -325,16 +326,15 @@ func (p *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotatio
 		return nil, fmt.Errorf("bitbucket(bk)-connector: only users and groups can have project permissions revoked")
 	}
 
-	_, permissions, err := ParseEntitlementID(entitlement.Id)
+	_, permission, err := ParseEntitlementID(entitlement.Id)
 	if err != nil {
 		return nil, err
 	}
 
-	switch permissions[len(permissions)-1] {
+	switch permission {
 	case roleProjectCreate, roleProjectWrite, roleProjectAdmin, roleProjectRead, roleRepoCreate:
-		permission = permissions[len(permissions)-1]
 	default:
-		return nil, fmt.Errorf("bitbucket(dc)-connector: invalid permission type: %s", permissions[len(permissions)-1])
+		return nil, fmt.Errorf("bitbucket(dc)-connector: invalid permission type: %s", permission)
 	}
 
 	projectKey := entitlement.Resource.Id.Resource

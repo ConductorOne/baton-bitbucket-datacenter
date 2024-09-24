@@ -2,9 +2,7 @@ package connector
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -168,20 +166,20 @@ func PString[T any](p *T) T {
 }
 
 // Create a new connector resource for an Bitbucket UserGroup.
-func groupResource(ctx context.Context, group string, parentResourceID *v2.ResourceId) (*v2.Resource, error) {
-	id := group // Bitbucket DC groups only contains name
-	name := group
-	profile := map[string]interface{}{
-		"group_name": name,
-		"group_id":   id,
+func groupResource(ctx context.Context, groupName string, parentResourceId *v2.ResourceId) (*v2.Resource, error) {
+	if groupName == "" {
+		return nil, fmt.Errorf("bitbucket(dc)-connector: group name is empty")
 	}
-	groupTraitOptions := []rs.GroupTraitOption{rs.WithGroupProfile(profile)}
+	resourceOptions := []rs.ResourceOption{}
+	if parentResourceId != nil {
+		resourceOptions = append(resourceOptions, rs.WithParentResourceID(parentResourceId))
+	}
 	resource, err := rs.NewGroupResource(
-		name,
+		groupName,
 		resourceTypeGroup,
-		id,
-		groupTraitOptions,
-		rs.WithParentResourceID(parentResourceID),
+		groupName,
+		nil,
+		resourceOptions...,
 	)
 	if err != nil {
 		return nil, err
@@ -214,11 +212,11 @@ func unmarshalSkipToken(token *pagination.Token) (int32, *pagination.Bag, error)
 	return skip, b, nil
 }
 
-func ParseEntitlementID(id string) (*v2.ResourceId, []string, error) {
+func ParseEntitlementID(id string) (*v2.ResourceId, string, error) {
 	parts := strings.Split(id, ":")
 	// Need to be at least 3 parts type:entitlement_id:slug
 	if len(parts) < 3 || len(parts) > 3 {
-		return nil, nil, fmt.Errorf("bitbucket(dc)-connector: invalid resource id")
+		return nil, "", fmt.Errorf("bitbucket(dc)-connector: invalid resource id")
 	}
 
 	resourceId := &v2.ResourceId{
@@ -226,7 +224,7 @@ func ParseEntitlementID(id string) (*v2.ResourceId, []string, error) {
 		Resource:     strings.Join(parts[1:len(parts)-1], ":"),
 	}
 
-	return resourceId, parts, nil
+	return resourceId, parts[len(parts)-1], nil
 }
 
 func listGlobalUserPermissions(ctx context.Context, cli *client.DataCenterClient) ([]client.UsersPermissions, error) {
@@ -425,34 +423,4 @@ func listGroupProjectsPermissions(ctx context.Context, cli *client.DataCenterCli
 	}
 
 	return lstPermissions, nil
-}
-
-func getGroupProjectsPermission(ctx context.Context, cli *client.DataCenterClient, projectKey, groupName string) (string, int, error) {
-	listGroup, err := listGroupProjectsPermissions(ctx, cli, projectKey)
-	if err != nil {
-		return "", 0, err
-	}
-
-	groupPos := slices.IndexFunc(listGroup, func(c client.GroupsPermissions) bool {
-		return c.Group.Name == groupName
-	})
-
-	if groupPos == NF {
-		return "", groupPos, err
-	}
-
-	return listGroup[groupPos].Permission, groupPos, err
-}
-
-func getError(err error) error {
-	var bitbucketErr *client.BitbucketError
-	if err == nil {
-		return nil
-	}
-
-	if errors.As(err, &bitbucketErr) {
-		return fmt.Errorf("%s %s", bitbucketErr.Error(), bitbucketErr.ErrorSummary)
-	}
-
-	return err
 }

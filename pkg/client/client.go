@@ -567,6 +567,39 @@ func (d *DataCenterClient) GetGlobalUserPermissions(ctx context.Context, startPa
 	return permissionsData.UsersPermissions, page, nil
 }
 
+func (d *DataCenterClient) RevokeUserGlobalPermission(ctx context.Context, userName string) error {
+	uri, err := d.MakeURL(ctx, allUsersWithGlobalPermissionEndpoint, map[string]string{
+		"name": userName,
+	})
+	if err != nil {
+		return err
+	}
+
+	resp, err := d.Do(ctx, http.MethodDelete, uri, nil, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
+func (d *DataCenterClient) UpdateUserGlobalPermission(ctx context.Context, userName, permission string) error {
+	uri, err := d.MakeURL(ctx, allUsersWithGlobalPermissionEndpoint, map[string]string{
+		"name":       userName,
+		"permission": permission,
+	})
+	if err != nil {
+		return err
+	}
+
+	resp, err := d.Do(ctx, http.MethodPut, uri, nil, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
 func (d *DataCenterClient) GetGlobalGroupPermissions(ctx context.Context, startPage, limit string) ([]GroupsPermissions, Page, error) {
 	if startPage == "" {
 		startPage = "0"
@@ -600,6 +633,39 @@ func (d *DataCenterClient) GetGlobalGroupPermissions(ctx context.Context, startP
 	}
 
 	return permissionsData.GroupsPermissions, page, nil
+}
+
+func (d *DataCenterClient) RevokeGroupGlobalPermission(ctx context.Context, groupName string) error {
+	uri, err := d.MakeURL(ctx, allGroupsWithGlobalPermissionEndpoint, map[string]string{
+		"name": groupName,
+	})
+	if err != nil {
+		return err
+	}
+
+	resp, err := d.Do(ctx, http.MethodDelete, uri, nil, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
+func (d *DataCenterClient) UpdateGroupGlobalPermission(ctx context.Context, groupName, permission string) error {
+	uri, err := d.MakeURL(ctx, allGroupsWithGlobalPermissionEndpoint, map[string]string{
+		"name":       groupName,
+		"permission": permission,
+	})
+	if err != nil {
+		return err
+	}
+
+	resp, err := d.Do(ctx, http.MethodPut, uri, nil, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
 }
 
 func (d *DataCenterClient) ListGlobalUserPermissions(ctx context.Context, opts PageOptions) ([]UsersPermissions, string, error) {
@@ -813,9 +879,10 @@ func (d *DataCenterClient) GetGroupRepositoryPermissions(ctx context.Context, st
 	if startPage == "" {
 		startPage = "0"
 	}
-	path := fmt.Sprintf("%s/%s/%s",
+	path := fmt.Sprintf("%s/%s/repos/%s/%s",
 		allProjectsEndpoint,
 		projectKey,
+		repositorySlug,
 		groupsWithPermission,
 	)
 	uri, err := d.MakeURL(ctx, path, map[string]string{
