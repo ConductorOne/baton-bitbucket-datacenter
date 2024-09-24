@@ -2,6 +2,7 @@ package connector
 
 import (
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
+	"github.com/conductorone/baton-sdk/pkg/annotations"
 )
 
 // To fetch 1000 results
@@ -15,7 +16,7 @@ var (
 		Traits: []v2.ResourceType_Trait{
 			v2.ResourceType_TRAIT_USER,
 		},
-		Annotations: annotationsForUserResourceType(),
+		Annotations: annotations.New(&v2.SkipEntitlementsAndGrants{}),
 	}
 	resourceTypeProject = &v2.ResourceType{
 		Id:          "project",

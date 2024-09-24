@@ -70,6 +70,27 @@ type auth struct {
 	bearerToken    string
 }
 
+func (d *DataCenterClient) checkStatusUnauthorizedError(err error) error {
+	var bitbucketErr *BitbucketError
+	if err == nil {
+		return nil
+	}
+
+	if d.auth.user != "" && d.auth.password != "" {
+		// Only squelch permission errors if using bearer token auth
+		return err
+	}
+
+	if errors.As(err, &bitbucketErr) {
+		if bitbucketErr.ErrorCode != http.StatusUnauthorized {
+			return fmt.Errorf("%s %s", bitbucketErr.Error(), bitbucketErr.ErrorSummary)
+		}
+		return nil
+	}
+
+	return err
+}
+
 func NewClient() *DataCenterClient {
 	return &DataCenterClient{
 		httpClient: &uhttp.BaseHttpClient{},
@@ -525,6 +546,8 @@ func (d *DataCenterClient) GetGlobalUserPermissions(ctx context.Context, startPa
 
 	var permissionsData GlobalPermissionsAPIData
 	resp, err := d.Do(ctx, http.MethodGet, uri, nil, &permissionsData)
+	// if bearer auth, squelch 403 and return empty list
+	err = d.checkStatusUnauthorizedError(err)
 	if err != nil {
 		return nil, Page{}, err
 	}
@@ -558,6 +581,8 @@ func (d *DataCenterClient) GetGlobalGroupPermissions(ctx context.Context, startP
 
 	var permissionsData GlobalGroupPermissionsAPIData
 	resp, err := d.Do(ctx, http.MethodGet, uri, nil, &permissionsData)
+	// if bearer auth, squelch 403 and return empty list
+	err = d.checkStatusUnauthorizedError(err)
 	if err != nil {
 		return nil, Page{}, err
 	}
