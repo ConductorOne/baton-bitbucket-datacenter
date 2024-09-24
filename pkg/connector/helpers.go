@@ -43,7 +43,7 @@ func userResource(ctx context.Context, user *client.User, parentResourceID *v2.R
 	var userStatus v2.UserTrait_Status_Status = v2.UserTrait_Status_STATUS_ENABLED
 	firstName, lastName := splitFullName(user.Name)
 	profile := map[string]interface{}{
-		"login":      user.EmailAddress,
+		"login":      user.Slug,
 		"first_name": firstName,
 		"last_name":  lastName,
 		"email":      user.EmailAddress,
@@ -61,12 +61,15 @@ func userResource(ctx context.Context, user *client.User, parentResourceID *v2.R
 	userTraits := []rs.UserTraitOption{
 		rs.WithUserProfile(profile),
 		rs.WithStatus(userStatus),
-		rs.WithUserLogin(user.EmailAddress),
+		rs.WithUserLogin(user.Slug),
 		rs.WithEmail(user.EmailAddress, true),
 	}
 
 	displayName := user.Name
-	if user.Name == "" {
+	if displayName == "" {
+		displayName = user.Slug
+	}
+	if displayName == "" {
 		displayName = user.EmailAddress
 	}
 
@@ -130,8 +133,9 @@ func repositoryResource(ctx context.Context, repository *client.Repos, parentRes
 	}
 
 	groupTraitOptions := []rs.GroupTraitOption{rs.WithGroupProfile(profile)}
+	displayName := fmt.Sprintf("%s/%s", repository.Project.Key, repository.Slug)
 	resource, err := rs.NewGroupResource(
-		repository.Name,
+		displayName,
 		resourceTypeRepository,
 		makeRepositoryID(repository.Project.Key, repository.Slug),
 		groupTraitOptions,
