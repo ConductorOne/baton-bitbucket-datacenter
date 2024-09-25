@@ -34,22 +34,24 @@ func titleCase(s string) string {
 func parseToken(pToken *pagination.Token, defaultPageState []pagination.PageState) (*pagination.Token, *pagination.Bag, error) {
 	bag := &pagination.Bag{}
 
-	if pToken == nil || pToken.Token == "" {
-		for _, pageState := range defaultPageState {
-			bag.Push(pageState)
-		}
-
-		token, err := bag.Marshal()
-		if err != nil {
-			return nil, nil, err
-		}
-		if pToken == nil {
-			pToken = &pagination.Token{}
-		}
-		pToken.Size = 0
-		pToken.Token = token
+	if pToken != nil && pToken.Token != "" {
+		err := bag.Unmarshal(pToken.Token)
+		return pToken, bag, err
 	}
 
+	for _, pageState := range defaultPageState {
+		bag.Push(pageState)
+	}
+
+	token, err := bag.Marshal()
+	if err != nil {
+		return nil, nil, err
+	}
+	if pToken == nil {
+		pToken = &pagination.Token{}
+	}
+	pToken.Size = 0
+	pToken.Token = token
 	return pToken, bag, nil
 }
 
