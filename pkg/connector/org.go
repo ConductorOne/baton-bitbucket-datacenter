@@ -331,7 +331,7 @@ func (o *orgBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.A
 			zap.String("Permission", permission),
 		)
 	case resourceTypeGroup.Id:
-		groupName := entitlement.Resource.Id.Resource
+		groupName := principal.Id.Resource
 
 		globalGroupPermissions, err := listGlobalGroupPermissions(ctx, o.client)
 		if err != nil {
