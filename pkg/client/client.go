@@ -293,8 +293,8 @@ func (d *DataCenterClient) ListUsers(ctx context.Context, pToken *pagination.Tok
 	}
 	defer resp.Body.Close()
 
-	nextPageToken := getNextPageToken(userData.NextPageStart, userData.IsLastPage)
-	return userData.Users, nextPageToken, nil
+	nextPageToken, err := getNextPageToken(pToken, userData.NextPageStart, userData.IsLastPage)
+	return userData.Users, nextPageToken, err
 }
 
 // Get projects. Only projects for which the authenticated user has the PROJECT_VIEW permission will be returned.
@@ -313,8 +313,8 @@ func (d *DataCenterClient) ListProjects(ctx context.Context, pToken *pagination.
 	}
 	defer resp.Body.Close()
 
-	nextPageToken := getNextPageToken(projectData.NextPageStart, projectData.IsLastPage)
-	return projectData.Projects, nextPageToken, nil
+	nextPageToken, err := getNextPageToken(pToken, projectData.NextPageStart, projectData.IsLastPage)
+	return projectData.Projects, nextPageToken, err
 }
 
 func (d *DataCenterClient) ListRepos(ctx context.Context, pToken *pagination.Token) ([]Repos, string, error) {
@@ -331,8 +331,8 @@ func (d *DataCenterClient) ListRepos(ctx context.Context, pToken *pagination.Tok
 	}
 	defer resp.Body.Close()
 
-	nextPageToken := getNextPageToken(repoData.NextPageStart, repoData.IsLastPage)
-	return repoData.Repos, nextPageToken, nil
+	nextPageToken, err := getNextPageToken(pToken, repoData.NextPageStart, repoData.IsLastPage)
+	return repoData.Repos, nextPageToken, err
 }
 
 // ListGroups
@@ -351,9 +351,9 @@ func (d *DataCenterClient) ListGroups(ctx context.Context, pToken *pagination.To
 		return nil, pToken.Token, err
 	}
 	defer resp.Body.Close()
-	nextPageToken := getNextPageToken(groupData.NextPageStart, groupData.IsLastPage)
 
-	return groupData.Groups, nextPageToken, nil
+	nextPageToken, err := getNextPageToken(pToken, groupData.NextPageStart, groupData.IsLastPage)
+	return groupData.Groups, nextPageToken, err
 }
 
 // GetGroupMembers
@@ -697,52 +697,28 @@ func (d *DataCenterClient) ListGroupProjectsPermissions(ctx context.Context, opt
 	return permissions, nextPageToken, err
 }
 
-func (d *DataCenterClient) GetGroupRepositoryPermissions(ctx context.Context, startPage, limit, projectKey, repositorySlug string) ([]GroupsPermissions, Page, error) {
-	if startPage == "" {
-		startPage = "0"
-	}
+func (d *DataCenterClient) GetGroupRepositoryPermissions(ctx context.Context, projectKey, repositorySlug string, pToken *pagination.Token) ([]GroupsPermissions, string, error) {
+	queryParams := pageTokenToQueryParams(pToken)
 	path := fmt.Sprintf("%s/%s/repos/%s/%s",
 		allProjectsEndpoint,
 		projectKey,
 		repositorySlug,
 		groupsWithPermission,
 	)
-	uri, err := d.MakeURL(ctx, path, map[string]string{
-		"start": startPage,
-		"limit": limit,
-	})
+	uri, err := d.MakeURL(ctx, path, queryParams)
 	if err != nil {
-		return nil, Page{}, err
+		return nil, pToken.Token, err
 	}
 
 	var permissionsData GroupPermissionsAPIData
 	resp, err := d.Do(ctx, http.MethodGet, uri, nil, &permissionsData)
 	if err != nil {
-		return nil, Page{}, err
+		return nil, pToken.Token, err
 	}
 	defer resp.Body.Close()
 
-	page := parsePageData(permissionsData.Start, permissionsData.NextPageStart, permissionsData.Size, permissionsData.IsLastPage)
-	return permissionsData.GroupsPermissions, page, nil
-}
-
-func (d *DataCenterClient) ListGroupRepositoryPermissions(ctx context.Context, opts PageOptions, projectKey, repositorySlug string) ([]GroupsPermissions, string, error) {
-	var nextPageToken string = ""
-	permissions, page, err := d.GetGroupRepositoryPermissions(ctx,
-		strconv.Itoa(opts.Page),
-		strconv.Itoa(opts.PerPage),
-		projectKey,
-		repositorySlug,
-	)
-	if err != nil {
-		return permissions, "", err
-	}
-
-	if page.HasNext() {
-		nextPageToken = *page.NextPage
-	}
-
-	return permissions, nextPageToken, err
+	nextPageToken, err := getNextPageToken(pToken, permissionsData.NextPageStart, permissionsData.IsLastPage)
+	return permissionsData.GroupsPermissions, nextPageToken, err
 }
 
 // AddUserToGroups

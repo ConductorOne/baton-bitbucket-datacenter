@@ -121,10 +121,7 @@ func (r *repoBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken 
 
 	switch bag.ResourceTypeID() {
 	case resourceTypeGroup.Id:
-		groupsPermissions, nextPageToken, err = r.client.ListGroupRepositoryPermissions(ctx, client.PageOptions{
-			PerPage: client.ITEMSPERPAGE,
-			Page:    pageToken,
-		}, projectKey, repoSlug)
+		groupsPermissions, nextPageToken, err = r.client.GetGroupRepositoryPermissions(ctx, projectKey, repoSlug, pToken)
 		if err != nil {
 			return nil, "", nil, err
 		}

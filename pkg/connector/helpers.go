@@ -300,27 +300,17 @@ func listUserRepositoryPermissions(ctx context.Context, cli *client.DataCenterCl
 // listGroupRepositoryPermissions
 // repositorySlug = name.
 func listGroupRepositoryPermissions(ctx context.Context, cli *client.DataCenterClient, projectKey, repositorySlug string) ([]client.GroupsPermissions, error) {
-	var (
-		page           int
-		lstPermissions []client.GroupsPermissions
-	)
+	var lstPermissions []client.GroupsPermissions
+	pToken := &pagination.Token{}
 	for {
-		permissions, nextPageToken, err := cli.ListGroupRepositoryPermissions(ctx, client.PageOptions{
-			PerPage: client.ITEMSPERPAGE,
-			Page:    page,
-		}, projectKey, repositorySlug)
+		permissions, nextPageToken, err := cli.GetGroupRepositoryPermissions(ctx, projectKey, repositorySlug, pToken)
 		if err != nil {
 			return nil, err
 		}
-
+		pToken.Token = nextPageToken
 		lstPermissions = append(lstPermissions, permissions...)
 		if nextPageToken == "" {
 			break
-		}
-
-		page, err = strconv.Atoi(nextPageToken)
-		if err != nil {
-			return nil, err
 		}
 	}
 

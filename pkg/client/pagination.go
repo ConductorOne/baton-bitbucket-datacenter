@@ -29,18 +29,43 @@ func pageTokenToQueryParams(pToken *pagination.Token) map[string]string {
 		"start": "0",
 		"limit": strconv.Itoa(ITEMSPERPAGE),
 	}
-	if pToken != nil && pToken.Token != "" {
-		queryParams["start"] = pToken.Token
+	if pToken == nil || pToken.Token == "" {
+		return queryParams
 	}
+
+	bag := &pagination.Bag{}
+	err := bag.Unmarshal(pToken.Token)
+	if err != nil {
+		return queryParams
+	}
+
+	if bag.PageToken() != "" {
+		queryParams["start"] = bag.PageToken()
+	}
+
 	return queryParams
 }
 
-func getNextPageToken(nextPageStart int, isLastPage bool) string {
-	if isLastPage {
-		return ""
+func getNextPageToken(pToken *pagination.Token, nextPageStart int, isLastPage bool) (string, error) {
+	bag := &pagination.Bag{}
+	if pToken == nil || pToken.Token == "" {
+		bag.Push(pagination.PageState{
+			Token: strconv.Itoa(nextPageStart),
+		})
+		return bag.Marshal()
 	}
 
-	return strconv.Itoa(nextPageStart)
+	err := bag.Unmarshal(pToken.Token)
+	if err != nil {
+		return "", err
+	}
+
+	if isLastPage {
+		bag.Pop()
+		return bag.Marshal()
+	}
+
+	return bag.NextToken(strconv.Itoa(nextPageStart))
 }
 
 // Page is base struct for resource pagination.
