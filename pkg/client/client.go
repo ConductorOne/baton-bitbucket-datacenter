@@ -832,7 +832,7 @@ func (d *DataCenterClient) UpdateUserRepositoryPermission(ctx context.Context, p
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
-		return errors.New("user not updated")
+		return fmt.Errorf("user not updated. status code %d", resp.StatusCode)
 	}
 
 	return nil
@@ -865,7 +865,7 @@ func (d *DataCenterClient) UpdateGroupRepositoryPermission(ctx context.Context, 
 
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
-		return errors.New("group not updated")
+		return fmt.Errorf("group not updated. status code %d", resp.StatusCode)
 	}
 
 	return nil
@@ -895,7 +895,7 @@ func (d *DataCenterClient) RevokeGroupRepositoryPermission(ctx context.Context, 
 
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
-		return errors.New("group not removed")
+		return fmt.Errorf("group not removed. status code %d", resp.StatusCode)
 	}
 
 	return nil
@@ -925,7 +925,7 @@ func (d *DataCenterClient) RevokeUserRepositoryPermission(ctx context.Context, p
 
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
-		return errors.New("user not removed")
+		return fmt.Errorf("user not removed. status code %d", resp.StatusCode)
 	}
 
 	return nil
@@ -954,7 +954,7 @@ func (d *DataCenterClient) RevokeUserProjectPermission(ctx context.Context, proj
 
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
-		return errors.New("user not removed")
+		return fmt.Errorf("user not removed. status code %d", resp.StatusCode)
 	}
 
 	return nil
@@ -983,7 +983,7 @@ func (d *DataCenterClient) RevokeGroupProjectPermission(ctx context.Context, pro
 
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
-		return errors.New("group not removed")
+		return fmt.Errorf("group not removed. status code %d", resp.StatusCode)
 	}
 
 	return nil
@@ -1013,7 +1013,7 @@ func (d *DataCenterClient) UpdateUserProjectPermission(ctx context.Context, proj
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusNoContent {
-		return errors.New("project not updated")
+		return fmt.Errorf("project not updated. status code %d", resp.StatusCode)
 	}
 
 	return nil
@@ -1043,7 +1043,7 @@ func (d *DataCenterClient) UpdateGroupProjectPermission(ctx context.Context, pro
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusNoContent {
-		return errors.New("project not updated")
+		return fmt.Errorf("project not updated. status code %d", resp.StatusCode)
 	}
 
 	return nil
