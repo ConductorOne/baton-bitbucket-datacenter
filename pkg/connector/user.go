@@ -7,7 +7,55 @@ import (
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
 	"github.com/conductorone/baton-sdk/pkg/annotations"
 	"github.com/conductorone/baton-sdk/pkg/pagination"
+	rs "github.com/conductorone/baton-sdk/pkg/types/resource"
 )
+
+func userResource(_ context.Context, user *client.User, parentResourceID *v2.ResourceId) (*v2.Resource, error) {
+	var userStatus v2.UserTrait_Status_Status = v2.UserTrait_Status_STATUS_ENABLED
+	firstName, lastName := rs.SplitFullName(user.Name)
+	profile := map[string]interface{}{
+		"login":      user.Slug,
+		"first_name": firstName,
+		"last_name":  lastName,
+		"email":      user.EmailAddress,
+		"user_id":    user.ID,
+		"user_slug":  user.Slug,
+	}
+
+	switch user.Active {
+	case true:
+		userStatus = v2.UserTrait_Status_STATUS_ENABLED
+	case false:
+		userStatus = v2.UserTrait_Status_STATUS_DISABLED
+	}
+
+	userTraits := []rs.UserTraitOption{
+		rs.WithUserProfile(profile),
+		rs.WithStatus(userStatus),
+		rs.WithUserLogin(user.Slug),
+		rs.WithEmail(user.EmailAddress, true),
+	}
+
+	displayName := user.Name
+	if displayName == "" {
+		displayName = user.Slug
+	}
+	if displayName == "" {
+		displayName = user.EmailAddress
+	}
+
+	ret, err := rs.NewUserResource(
+		displayName,
+		resourceTypeUser,
+		user.ID,
+		userTraits,
+		rs.WithParentResourceID(parentResourceID))
+	if err != nil {
+		return nil, err
+	}
+
+	return ret, nil
+}
 
 type userBuilder struct {
 	resourceType *v2.ResourceType

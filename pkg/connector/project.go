@@ -12,9 +12,34 @@ import (
 	"github.com/conductorone/baton-sdk/pkg/pagination"
 	ent "github.com/conductorone/baton-sdk/pkg/types/entitlement"
 	"github.com/conductorone/baton-sdk/pkg/types/grant"
+	rs "github.com/conductorone/baton-sdk/pkg/types/resource"
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
 	"go.uber.org/zap"
 )
+
+// Create a new connector resource for an Bitbucket Project.
+func projectResource(_ context.Context, project *client.Projects, parentResourceID *v2.ResourceId) (*v2.Resource, error) {
+	profile := map[string]interface{}{
+		"project_id":   project.ID,
+		"project_name": project.Name,
+		"project_key":  project.Key,
+	}
+
+	groupTraitOptions := []rs.GroupTraitOption{rs.WithGroupProfile(profile)}
+	resource, err := rs.NewGroupResource(
+		project.Name,
+		resourceTypeProject,
+		project.Key,
+		groupTraitOptions,
+		rs.WithParentResourceID(parentResourceID),
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return resource, nil
+}
 
 type projectBuilder struct {
 	resourceType *v2.ResourceType
@@ -187,7 +212,7 @@ func (p *projectBuilder) Grant(ctx context.Context, principal *v2.Resource, enti
 		userPos := slices.IndexFunc(listUser, func(c client.UsersPermissions) bool {
 			return c.User.Name == principal.DisplayName && c.Permission == permission
 		})
-		if userPos != NF {
+		if userPos >= 0 {
 			l.Warn(
 				"bitbucket(dc)-connector: user already has this project permission",
 				zap.String("principal_id", principal.Id.String()),
@@ -216,7 +241,7 @@ func (p *projectBuilder) Grant(ctx context.Context, principal *v2.Resource, enti
 		groupPos := slices.IndexFunc(listGroup, func(c client.GroupsPermissions) bool {
 			return c.Group.Name == principal.DisplayName && c.Permission == permission
 		})
-		if groupPos != NF {
+		if groupPos >= 0 {
 			l.Warn(
 				"bitbucket(dc)-connector: group already has this project permission",
 				zap.String("principal_id", principal.Id.String()),
@@ -287,7 +312,7 @@ func (p *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotatio
 		userPos := slices.IndexFunc(listUser, func(c client.UsersPermissions) bool {
 			return c.User.Name == userName && c.Permission == permission
 		})
-		if userPos == NF {
+		if userPos < 0 {
 			l.Warn(
 				"bitbucket(dc)-connector: user doesn't have this project permission",
 				zap.String("principal_id", principal.Id.String()),
@@ -316,7 +341,7 @@ func (p *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotatio
 		groupPos := slices.IndexFunc(listGroup, func(c client.GroupsPermissions) bool {
 			return c.Group.Name == groupName && c.Permission == permission
 		})
-		if groupPos == NF {
+		if groupPos < 0 {
 			l.Warn(
 				"bitbucket(dc)-connector: group doesn't have this project permission",
 				zap.String("principal_id", principal.Id.String()),

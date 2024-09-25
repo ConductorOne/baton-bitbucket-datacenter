@@ -12,9 +12,33 @@ import (
 	"github.com/conductorone/baton-sdk/pkg/pagination"
 	ent "github.com/conductorone/baton-sdk/pkg/types/entitlement"
 	"github.com/conductorone/baton-sdk/pkg/types/grant"
+	rs "github.com/conductorone/baton-sdk/pkg/types/resource"
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
 	"go.uber.org/zap"
 )
+
+// Create a new connector resource for an Bitbucket UserGroup.
+func groupResource(_ context.Context, groupName string, parentResourceId *v2.ResourceId) (*v2.Resource, error) {
+	if groupName == "" {
+		return nil, fmt.Errorf("bitbucket(dc)-connector: group name is empty")
+	}
+	resourceOptions := []rs.ResourceOption{}
+	if parentResourceId != nil {
+		resourceOptions = append(resourceOptions, rs.WithParentResourceID(parentResourceId))
+	}
+	resource, err := rs.NewGroupResource(
+		groupName,
+		resourceTypeGroup,
+		groupName,
+		nil,
+		resourceOptions...,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return resource, nil
+}
 
 type groupBuilder struct {
 	resourceType *v2.ResourceType
@@ -121,7 +145,7 @@ func (g *groupBuilder) Grant(ctx context.Context, principal *v2.Resource, entitl
 		groupPos := slices.IndexFunc(listGroups, func(c client.Members) bool {
 			return c.ID == userId
 		})
-		if groupPos != NF {
+		if groupPos >= 0 {
 			l.Info(
 				"bitbucket(dc)-connector: user is already a member of the group",
 				zap.String("principal_id", principal.Id.String()),
@@ -184,7 +208,7 @@ func (g *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations
 		groupPos := slices.IndexFunc(groupMembers, func(c client.Members) bool {
 			return c.ID == userId
 		})
-		if groupPos == NF {
+		if groupPos < 0 {
 			l.Info(
 				"bitbucket(dc)-connector: user is not a member of the group",
 				zap.String("principal_id", principal.Id.String()),

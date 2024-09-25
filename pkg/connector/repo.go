@@ -12,6 +12,7 @@ import (
 	"github.com/conductorone/baton-sdk/pkg/pagination"
 	ent "github.com/conductorone/baton-sdk/pkg/types/entitlement"
 	"github.com/conductorone/baton-sdk/pkg/types/grant"
+	rs "github.com/conductorone/baton-sdk/pkg/types/resource"
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
 	"go.uber.org/zap"
 )
@@ -30,7 +31,30 @@ const (
 
 var repositoryRoles = []string{roleRepoRead, roleRepoWrite, roleRepoAdmin, roleRepoCreate}
 
-const NF = -1
+// Create a new connector resource for an Bitbucket Repository.
+func repositoryResource(_ context.Context, repository *client.Repos, parentResourceID *v2.ResourceId) (*v2.Resource, error) {
+	profile := map[string]interface{}{
+		"repository_id":          repository.ID,
+		"repository_name":        repository.Name,
+		"repository_full_name":   repository.Slug,
+		"repository_project_key": repository.Project.Key,
+	}
+
+	groupTraitOptions := []rs.GroupTraitOption{rs.WithGroupProfile(profile)}
+	displayName := fmt.Sprintf("%s/%s", repository.Project.Key, repository.Slug)
+	resource, err := rs.NewGroupResource(
+		displayName,
+		resourceTypeRepository,
+		makeRepositoryID(repository.Project.Key, repository.Slug),
+		groupTraitOptions,
+		rs.WithParentResourceID(parentResourceID),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return resource, nil
+}
 
 func (r *repoBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
 	return r.resourceType
@@ -195,7 +219,7 @@ func (r *repoBuilder) Grant(ctx context.Context, principal *v2.Resource, entitle
 		index := slices.IndexFunc(userRepositoryPermissions, func(c client.UsersPermissions) bool {
 			return c.User.ID == userId
 		})
-		if index != NF {
+		if index >= 0 {
 			l.Warn(
 				"bitbucket(dc)-connector: user already has this repository permission",
 				zap.String("principal_id", principal.Id.String()),
@@ -230,7 +254,7 @@ func (r *repoBuilder) Grant(ctx context.Context, principal *v2.Resource, entitle
 		groupsPermissionsPos := slices.IndexFunc(groupRepositoryPermissions, func(c client.GroupsPermissions) bool {
 			return c.Group.Name == groupName
 		})
-		if groupsPermissionsPos != NF {
+		if groupsPermissionsPos >= 0 {
 			l.Warn(
 				"bitbucket(dc)-connector: group already has this repository permission",
 				zap.String("principal_id", principal.Id.String()),
@@ -302,7 +326,7 @@ func (r *repoBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.
 		index := slices.IndexFunc(listUsers, func(c client.UsersPermissions) bool {
 			return c.User.ID == userId
 		})
-		if index == NF {
+		if index < 0 {
 			l.Warn(
 				"bitbucket(dc)-connector: user doesnt have this repository permission",
 				zap.String("principal_id", principal.Id.String()),
@@ -331,7 +355,7 @@ func (r *repoBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.
 		index := slices.IndexFunc(listGroups, func(c client.GroupsPermissions) bool {
 			return c.Group.Name == principal.DisplayName
 		})
-		if index == NF {
+		if index < 0 {
 			l.Warn(
 				"bitbucket(dc)-connector: group doesnt have this repository permission",
 				zap.String("principal_id", principal.Id.String()),
