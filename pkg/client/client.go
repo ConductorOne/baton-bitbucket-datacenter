@@ -269,7 +269,6 @@ func (d *DataCenterClient) Do(ctx context.Context, method string, uri *url.URL, 
 
 	resp, err := d.httpClient.Do(req, doOptions...)
 	if err != nil {
-		// TODO: check if bearer token auth and 403 unauthorized
 		return nil, GetCustomErr(req, resp, err)
 	}
 
