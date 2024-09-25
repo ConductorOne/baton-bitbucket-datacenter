@@ -16,11 +16,18 @@
     },
     {
       "resourceType":  {
+        "id":  "org",
+        "displayName":  "Organization"
+      },
+      "capabilities":  [
+        "CAPABILITY_SYNC",
+        "CAPABILITY_PROVISION"
+      ]
+    },
+    {
+      "resourceType":  {
         "id":  "project",
-        "displayName":  "Project",
-        "traits":  [
-          "TRAIT_GROUP"
-        ]
+        "displayName":  "Project"
       },
       "capabilities":  [
         "CAPABILITY_SYNC",
@@ -30,10 +37,7 @@
     {
       "resourceType":  {
         "id":  "repository",
-        "displayName":  "Repository",
-        "traits":  [
-          "TRAIT_GROUP"
-        ]
+        "displayName":  "Repository"
       },
       "capabilities":  [
         "CAPABILITY_SYNC",
