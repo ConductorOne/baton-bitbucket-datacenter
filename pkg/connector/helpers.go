@@ -234,7 +234,7 @@ func listGlobalUserPermissions(ctx context.Context, cli *client.DataCenterClient
 	)
 	for {
 		permissions, nextPageToken, err := cli.ListGlobalUserPermissions(ctx, client.PageOptions{
-			PerPage: ITEMSPERPAGE,
+			PerPage: client.ITEMSPERPAGE,
 			Page:    page,
 		})
 		if err != nil {
@@ -262,7 +262,7 @@ func listGlobalGroupPermissions(ctx context.Context, cli *client.DataCenterClien
 	)
 	for {
 		permissions, nextPageToken, err := cli.ListGlobalGroupPermissions(ctx, client.PageOptions{
-			PerPage: ITEMSPERPAGE,
+			PerPage: client.ITEMSPERPAGE,
 			Page:    page,
 		})
 		if err != nil {
@@ -290,7 +290,7 @@ func listGroupMembers(ctx context.Context, cli *client.DataCenterClient, groupNa
 	)
 	for {
 		listGroup, nextPageToken, err := cli.ListGroupMembers(ctx, client.PageOptions{
-			PerPage: ITEMSPERPAGE,
+			PerPage: client.ITEMSPERPAGE,
 			Page:    page,
 		}, groupName)
 		if err != nil {
@@ -318,7 +318,7 @@ func listUserRepositoryPermissions(ctx context.Context, cli *client.DataCenterCl
 	)
 	for {
 		permissions, nextPageToken, err := cli.ListUserRepositoryPermissions(ctx, client.PageOptions{
-			PerPage: ITEMSPERPAGE,
+			PerPage: client.ITEMSPERPAGE,
 			Page:    page,
 		}, projectKey, repositorySlug)
 		if err != nil {
@@ -348,7 +348,7 @@ func listGroupRepositoryPermissions(ctx context.Context, cli *client.DataCenterC
 	)
 	for {
 		permissions, nextPageToken, err := cli.ListGroupRepositoryPermissions(ctx, client.PageOptions{
-			PerPage: ITEMSPERPAGE,
+			PerPage: client.ITEMSPERPAGE,
 			Page:    page,
 		}, projectKey, repositorySlug)
 		if err != nil {
@@ -376,7 +376,7 @@ func listUserProjectsPermissions(ctx context.Context, cli *client.DataCenterClie
 	)
 	for {
 		permissions, nextPageToken, err := cli.ListUserProjectsPermissions(ctx, client.PageOptions{
-			PerPage: ITEMSPERPAGE,
+			PerPage: client.ITEMSPERPAGE,
 			Page:    page,
 		}, projectKey)
 		if err != nil {
@@ -404,7 +404,7 @@ func listGroupProjectsPermissions(ctx context.Context, cli *client.DataCenterCli
 	)
 	for {
 		permissions, nextPageToken, err := cli.ListGroupProjectsPermissions(ctx, client.PageOptions{
-			PerPage: ITEMSPERPAGE,
+			PerPage: client.ITEMSPERPAGE,
 			Page:    page,
 		}, projectKey)
 		if err != nil {

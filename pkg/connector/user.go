@@ -2,7 +2,6 @@ package connector
 
 import (
 	"context"
-	"strconv"
 
 	"github.com/conductorone/baton-bitbucket-datacenter/pkg/client"
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
@@ -22,22 +21,9 @@ func (u *userBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
 // List returns all the users from the database as resource objects.
 // Users include a UserTrait because they are the 'shape' of a standard user.
 func (u *userBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId, pToken *pagination.Token) ([]*v2.Resource, string, annotations.Annotations, error) {
-	var (
-		pageToken int
-		err       error
-		rv        []*v2.Resource
-	)
-	if pToken.Token != "" {
-		pageToken, err = strconv.Atoi(pToken.Token)
-		if err != nil {
-			return nil, "", nil, err
-		}
-	}
+	var rv []*v2.Resource
 
-	users, nextPageToken, err := u.client.ListUsers(ctx, client.PageOptions{
-		PerPage: ITEMSPERPAGE,
-		Page:    pageToken,
-	})
+	users, nextPageToken, err := u.client.ListUsers(ctx, pToken)
 	if err != nil {
 		return nil, "", nil, err
 	}

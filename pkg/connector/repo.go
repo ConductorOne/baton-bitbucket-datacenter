@@ -39,38 +39,9 @@ func (r *repoBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
 // List returns all the repos from the database as resource objects.
 // Repos include a RepoTrait because they are the 'shape' of a standard repository.
 func (r *repoBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId, pToken *pagination.Token) ([]*v2.Resource, string, annotations.Annotations, error) {
-	var (
-		pageToken int
-		err       error
-		rv        []*v2.Resource
-	)
-	_, bag, err := unmarshalSkipToken(pToken)
-	if err != nil {
-		return nil, "", nil, err
-	}
+	var rv []*v2.Resource
 
-	if bag.Current() == nil {
-		bag.Push(pagination.PageState{
-			ResourceTypeID: resourceTypeRepository.Id,
-		})
-	}
-
-	if bag.Current().Token != "" {
-		pageToken, err = strconv.Atoi(bag.Current().Token)
-		if err != nil {
-			return nil, "", nil, err
-		}
-	}
-
-	repos, nextPageToken, err := r.client.ListRepos(ctx, client.PageOptions{
-		PerPage: ITEMSPERPAGE,
-		Page:    pageToken,
-	})
-	if err != nil {
-		return nil, "", nil, err
-	}
-
-	err = bag.Next(nextPageToken)
+	repos, nextPageToken, err := r.client.ListRepos(ctx, pToken)
 	if err != nil {
 		return nil, "", nil, err
 	}
@@ -88,11 +59,6 @@ func (r *repoBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId,
 			return nil, "", nil, err
 		}
 		rv = append(rv, ur)
-	}
-
-	nextPageToken, err = bag.Marshal()
-	if err != nil {
-		return nil, "", nil, err
 	}
 
 	return rv, nextPageToken, nil, nil
@@ -156,7 +122,7 @@ func (r *repoBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken 
 	switch bag.ResourceTypeID() {
 	case resourceTypeGroup.Id:
 		groupsPermissions, nextPageToken, err = r.client.ListGroupRepositoryPermissions(ctx, client.PageOptions{
-			PerPage: ITEMSPERPAGE,
+			PerPage: client.ITEMSPERPAGE,
 			Page:    pageToken,
 		}, projectKey, repoSlug)
 		if err != nil {
@@ -185,7 +151,7 @@ func (r *repoBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken 
 		}
 	case resourceTypeUser.Id:
 		usersPermissions, nextPageToken, err = r.client.ListUserRepositoryPermissions(ctx, client.PageOptions{
-			PerPage: ITEMSPERPAGE,
+			PerPage: client.ITEMSPERPAGE,
 			Page:    pageToken,
 		}, projectKey, repoSlug)
 		if err != nil {

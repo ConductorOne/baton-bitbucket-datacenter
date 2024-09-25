@@ -137,7 +137,7 @@ func (o *orgBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken *
 	switch bag.ResourceTypeID() {
 	case resourceTypeUser.Id:
 		userPermissions, nextPageToken, err := o.client.ListGlobalUserPermissions(ctx, client.PageOptions{
-			PerPage: ITEMSPERPAGE,
+			PerPage: client.ITEMSPERPAGE,
 			Page:    pageToken,
 		})
 		if err != nil {
@@ -170,7 +170,7 @@ func (o *orgBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken *
 
 	case resourceTypeGroup.Id:
 		groupPermissions, nextPageToken, err := o.client.ListGlobalGroupPermissions(ctx, client.PageOptions{
-			PerPage: ITEMSPERPAGE,
+			PerPage: client.ITEMSPERPAGE,
 			Page:    pageToken,
 		})
 		if err != nil {

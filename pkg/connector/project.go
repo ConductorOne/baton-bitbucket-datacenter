@@ -37,38 +37,9 @@ func (p *projectBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
 // List returns all the projects from the database as resource objects.
 // Projects include a ProjectTrait because they are the 'shape' of a standard project.
 func (p *projectBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId, pToken *pagination.Token) ([]*v2.Resource, string, annotations.Annotations, error) {
-	var (
-		pageToken int
-		err       error
-		rv        []*v2.Resource
-	)
-	_, bag, err := unmarshalSkipToken(pToken)
-	if err != nil {
-		return nil, "", nil, err
-	}
+	var rv []*v2.Resource
 
-	if bag.Current() == nil {
-		bag.Push(pagination.PageState{
-			ResourceTypeID: resourceTypeProject.Id,
-		})
-	}
-
-	if bag.Current().Token != "" {
-		pageToken, err = strconv.Atoi(bag.Current().Token)
-		if err != nil {
-			return nil, "", nil, err
-		}
-	}
-
-	projects, nextPageToken, err := p.client.ListProjects(ctx, client.PageOptions{
-		PerPage: ITEMSPERPAGE,
-		Page:    pageToken,
-	})
-	if err != nil {
-		return nil, "", nil, err
-	}
-
-	err = bag.Next(nextPageToken)
+	projects, nextPageToken, err := p.client.ListProjects(ctx, pToken)
 	if err != nil {
 		return nil, "", nil, err
 	}
@@ -80,11 +51,6 @@ func (p *projectBuilder) List(ctx context.Context, parentResourceID *v2.Resource
 			return nil, "", nil, err
 		}
 		rv = append(rv, ur)
-	}
-
-	nextPageToken, err = bag.Marshal()
-	if err != nil {
-		return nil, "", nil, err
 	}
 
 	return rv, nextPageToken, nil, nil
@@ -146,7 +112,7 @@ func (p *projectBuilder) Grants(ctx context.Context, resource *v2.Resource, pTok
 	switch bag.ResourceTypeID() {
 	case resourceTypeGroup.Id:
 		groupsPermissions, nextPageToken, err = p.client.ListGroupProjectsPermissions(ctx, client.PageOptions{
-			PerPage: ITEMSPERPAGE,
+			PerPage: client.ITEMSPERPAGE,
 			Page:    pageToken,
 		}, projectKey)
 		if err != nil {
@@ -174,7 +140,7 @@ func (p *projectBuilder) Grants(ctx context.Context, resource *v2.Resource, pTok
 		}
 	case resourceTypeUser.Id:
 		usersPermissions, nextPageToken, err = p.client.ListUserProjectsPermissions(ctx, client.PageOptions{
-			PerPage: ITEMSPERPAGE,
+			PerPage: client.ITEMSPERPAGE,
 			Page:    pageToken,
 		}, projectKey)
 		if err != nil {

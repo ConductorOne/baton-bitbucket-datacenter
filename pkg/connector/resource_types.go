@@ -5,10 +5,6 @@ import (
 	"github.com/conductorone/baton-sdk/pkg/annotations"
 )
 
-// To fetch 1000 results
-// https://confluence.atlassian.com/bitbucketserverkb/how-to-apply-the-limit-filter-in-bitbucket-server-and-datacenter-rest-api-and-query-more-than-the-max-limit-of-1000-results-1142440445.html
-const ITEMSPERPAGE = 1000
-
 var (
 	resourceTypeUser = &v2.ResourceType{
 		Id:          "user",
