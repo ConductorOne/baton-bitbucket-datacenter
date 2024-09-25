@@ -41,7 +41,7 @@ func (r *repoBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
 func (r *repoBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId, pToken *pagination.Token) ([]*v2.Resource, string, annotations.Annotations, error) {
 	var rv []*v2.Resource
 
-	repos, nextPageToken, err := r.client.ListRepos(ctx, pToken)
+	repos, nextPageToken, err := r.client.GetRepos(ctx, pToken)
 	if err != nil {
 		return nil, "", nil, err
 	}
@@ -85,33 +85,20 @@ func (r *repoBuilder) Entitlements(_ context.Context, resource *v2.Resource, _ *
 
 func (r *repoBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
 	var (
-		pageToken         int
-		err               error
 		rv                []*v2.Grant
 		nextPageToken     string
 		usersPermissions  []client.UsersPermissions
 		groupsPermissions []client.GroupsPermissions
 	)
-	_, bag, err := unmarshalSkipToken(pToken)
+
+	defaultPageState := []pagination.PageState{
+		{ResourceTypeID: resourceTypeGroup.Id},
+		{ResourceTypeID: resourceTypeUser.Id},
+	}
+
+	pToken, bag, err := parseToken(pToken, defaultPageState)
 	if err != nil {
 		return nil, "", nil, err
-	}
-
-	if bag.Current() == nil {
-		// Push onto stack in reverse
-		bag.Push(pagination.PageState{
-			ResourceTypeID: resourceTypeGroup.Id,
-		})
-		bag.Push(pagination.PageState{
-			ResourceTypeID: resourceTypeUser.Id,
-		})
-	}
-
-	if bag.Current().Token != "" {
-		pageToken, err = strconv.Atoi(bag.Current().Token)
-		if err != nil {
-			return nil, "", nil, err
-		}
 	}
 
 	projectKey, repoSlug, err := parseRepositoryID(resource.Id.Resource)
@@ -122,11 +109,6 @@ func (r *repoBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken 
 	switch bag.ResourceTypeID() {
 	case resourceTypeGroup.Id:
 		groupsPermissions, nextPageToken, err = r.client.GetGroupRepositoryPermissions(ctx, projectKey, repoSlug, pToken)
-		if err != nil {
-			return nil, "", nil, err
-		}
-
-		err = bag.Next(nextPageToken)
 		if err != nil {
 			return nil, "", nil, err
 		}
@@ -147,15 +129,7 @@ func (r *repoBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken 
 			rv = append(rv, permissionGrant)
 		}
 	case resourceTypeUser.Id:
-		usersPermissions, nextPageToken, err = r.client.ListUserRepositoryPermissions(ctx, client.PageOptions{
-			PerPage: client.ITEMSPERPAGE,
-			Page:    pageToken,
-		}, projectKey, repoSlug)
-		if err != nil {
-			return nil, "", nil, err
-		}
-
-		err = bag.Next(nextPageToken)
+		usersPermissions, nextPageToken, err = r.client.GetUserRepositoryPermissions(ctx, projectKey, repoSlug, pToken)
 		if err != nil {
 			return nil, "", nil, err
 		}
@@ -173,11 +147,6 @@ func (r *repoBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken 
 		}
 	default:
 		return nil, "", nil, fmt.Errorf("bitbucket(dc) connector: invalid grant resource type: %s", bag.ResourceTypeID())
-	}
-
-	nextPageToken, err = bag.Marshal()
-	if err != nil {
-		return nil, "", nil, err
 	}
 
 	return rv, nextPageToken, nil, nil

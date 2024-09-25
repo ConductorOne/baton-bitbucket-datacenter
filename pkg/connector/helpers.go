@@ -3,7 +3,6 @@ package connector
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/conductorone/baton-bitbucket-datacenter/pkg/client"
@@ -152,22 +151,26 @@ func titleCase(s string) string {
 	return titleCaser.String(s)
 }
 
-func unmarshalSkipToken(token *pagination.Token) (int32, *pagination.Bag, error) {
-	b := &pagination.Bag{}
-	err := b.Unmarshal(token.Token)
-	if err != nil {
-		return 0, nil, err
-	}
-	current := b.Current()
-	skip := int32(0)
-	if current != nil && current.Token != "" {
-		skip64, err := strconv.ParseInt(current.Token, 10, 32)
-		if err != nil {
-			return 0, nil, err
+func parseToken(pToken *pagination.Token, defaultPageState []pagination.PageState) (*pagination.Token, *pagination.Bag, error) {
+	bag := &pagination.Bag{}
+
+	if pToken == nil || pToken.Token == "" {
+		for _, pageState := range defaultPageState {
+			bag.Push(pageState)
 		}
-		skip = int32(skip64)
+
+		token, err := bag.Marshal()
+		if err != nil {
+			return nil, nil, err
+		}
+		if pToken == nil {
+			pToken = &pagination.Token{}
+		}
+		pToken.Size = 0
+		pToken.Token = token
 	}
-	return skip, b, nil
+
+	return pToken, bag, nil
 }
 
 func ParseEntitlementID(id string) (*v2.ResourceId, string, error) {
@@ -186,27 +189,17 @@ func ParseEntitlementID(id string) (*v2.ResourceId, string, error) {
 }
 
 func listGlobalUserPermissions(ctx context.Context, cli *client.DataCenterClient) ([]client.UsersPermissions, error) {
-	var (
-		page           int
-		lstPermissions []client.UsersPermissions
-	)
+	var lstPermissions []client.UsersPermissions
+	pToken := &pagination.Token{}
 	for {
-		permissions, nextPageToken, err := cli.ListGlobalUserPermissions(ctx, client.PageOptions{
-			PerPage: client.ITEMSPERPAGE,
-			Page:    page,
-		})
+		permissions, nextPageToken, err := cli.GetGlobalUserPermissions(ctx, pToken)
 		if err != nil {
 			return nil, err
 		}
-
+		pToken.Token = nextPageToken
 		lstPermissions = append(lstPermissions, permissions...)
 		if nextPageToken == "" {
 			break
-		}
-
-		page, err = strconv.Atoi(nextPageToken)
-		if err != nil {
-			return nil, err
 		}
 	}
 
@@ -214,27 +207,17 @@ func listGlobalUserPermissions(ctx context.Context, cli *client.DataCenterClient
 }
 
 func listGlobalGroupPermissions(ctx context.Context, cli *client.DataCenterClient) ([]client.GroupsPermissions, error) {
-	var (
-		page           int
-		lstPermissions []client.GroupsPermissions
-	)
+	var lstPermissions []client.GroupsPermissions
+	pToken := &pagination.Token{}
 	for {
-		permissions, nextPageToken, err := cli.ListGlobalGroupPermissions(ctx, client.PageOptions{
-			PerPage: client.ITEMSPERPAGE,
-			Page:    page,
-		})
+		permissions, nextPageToken, err := cli.GetGlobalGroupPermissions(ctx, pToken)
 		if err != nil {
 			return nil, err
 		}
-
+		pToken.Token = nextPageToken
 		lstPermissions = append(lstPermissions, permissions...)
 		if nextPageToken == "" {
 			break
-		}
-
-		page, err = strconv.Atoi(nextPageToken)
-		if err != nil {
-			return nil, err
 		}
 	}
 
@@ -242,27 +225,17 @@ func listGlobalGroupPermissions(ctx context.Context, cli *client.DataCenterClien
 }
 
 func listGroupMembers(ctx context.Context, cli *client.DataCenterClient, groupName string) ([]client.Members, error) {
-	var (
-		page       int
-		lstMembers []client.Members
-	)
+	var lstMembers []client.Members
+	pToken := &pagination.Token{}
 	for {
-		listGroup, nextPageToken, err := cli.ListGroupMembers(ctx, client.PageOptions{
-			PerPage: client.ITEMSPERPAGE,
-			Page:    page,
-		}, groupName)
+		listGroup, nextPageToken, err := cli.GetGroupMembers(ctx, groupName, pToken)
 		if err != nil {
 			return nil, err
 		}
-
+		pToken.Token = nextPageToken
 		lstMembers = append(lstMembers, listGroup...)
 		if nextPageToken == "" {
 			break
-		}
-
-		page, err = strconv.Atoi(nextPageToken)
-		if err != nil {
-			return nil, err
 		}
 	}
 
@@ -270,27 +243,17 @@ func listGroupMembers(ctx context.Context, cli *client.DataCenterClient, groupNa
 }
 
 func listUserRepositoryPermissions(ctx context.Context, cli *client.DataCenterClient, projectKey, repositorySlug string) ([]client.UsersPermissions, error) {
-	var (
-		page           int
-		lstPermissions []client.UsersPermissions
-	)
+	var lstPermissions []client.UsersPermissions
+	pToken := &pagination.Token{}
 	for {
-		permissions, nextPageToken, err := cli.ListUserRepositoryPermissions(ctx, client.PageOptions{
-			PerPage: client.ITEMSPERPAGE,
-			Page:    page,
-		}, projectKey, repositorySlug)
+		permissions, nextPageToken, err := cli.GetUserRepositoryPermissions(ctx, projectKey, repositorySlug, pToken)
 		if err != nil {
 			return nil, err
 		}
-
+		pToken.Token = nextPageToken
 		lstPermissions = append(lstPermissions, permissions...)
 		if nextPageToken == "" {
 			break
-		}
-
-		page, err = strconv.Atoi(nextPageToken)
-		if err != nil {
-			return nil, err
 		}
 	}
 
@@ -318,27 +281,17 @@ func listGroupRepositoryPermissions(ctx context.Context, cli *client.DataCenterC
 }
 
 func listUserProjectsPermissions(ctx context.Context, cli *client.DataCenterClient, projectKey string) ([]client.UsersPermissions, error) {
-	var (
-		page           int
-		lstPermissions []client.UsersPermissions
-	)
+	var lstPermissions []client.UsersPermissions
+	pToken := &pagination.Token{}
 	for {
-		permissions, nextPageToken, err := cli.ListUserProjectsPermissions(ctx, client.PageOptions{
-			PerPage: client.ITEMSPERPAGE,
-			Page:    page,
-		}, projectKey)
+		permissions, nextPageToken, err := cli.GetUserProjectsPermissions(ctx, projectKey, pToken)
 		if err != nil {
 			return nil, err
 		}
-
+		pToken.Token = nextPageToken
 		lstPermissions = append(lstPermissions, permissions...)
 		if nextPageToken == "" {
 			break
-		}
-
-		page, err = strconv.Atoi(nextPageToken)
-		if err != nil {
-			return nil, err
 		}
 	}
 
@@ -346,27 +299,17 @@ func listUserProjectsPermissions(ctx context.Context, cli *client.DataCenterClie
 }
 
 func listGroupProjectsPermissions(ctx context.Context, cli *client.DataCenterClient, projectKey string) ([]client.GroupsPermissions, error) {
-	var (
-		page           int
-		lstPermissions []client.GroupsPermissions
-	)
+	var lstPermissions []client.GroupsPermissions
+	pToken := &pagination.Token{}
 	for {
-		permissions, nextPageToken, err := cli.ListGroupProjectsPermissions(ctx, client.PageOptions{
-			PerPage: client.ITEMSPERPAGE,
-			Page:    page,
-		}, projectKey)
+		permissions, nextPageToken, err := cli.GetGroupProjectsPermissions(ctx, projectKey, pToken)
 		if err != nil {
 			return nil, err
 		}
-
+		pToken.Token = nextPageToken
 		lstPermissions = append(lstPermissions, permissions...)
 		if nextPageToken == "" {
 			break
-		}
-
-		page, err = strconv.Atoi(nextPageToken)
-		if err != nil {
-			return nil, err
 		}
 	}
 

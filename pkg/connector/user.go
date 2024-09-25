@@ -23,7 +23,7 @@ func (u *userBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
 func (u *userBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId, pToken *pagination.Token) ([]*v2.Resource, string, annotations.Annotations, error) {
 	var rv []*v2.Resource
 
-	users, nextPageToken, err := u.client.ListUsers(ctx, pToken)
+	users, nextPageToken, err := u.client.GetUsers(ctx, pToken)
 	if err != nil {
 		return nil, "", nil, err
 	}

@@ -109,42 +109,23 @@ func (o *orgBuilder) Entitlements(ctx context.Context, resource *v2.Resource, pT
 }
 
 func (o *orgBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
-	var (
-		pageToken int
-		rv        []*v2.Grant
-	)
-	_, bag, err := unmarshalSkipToken(pToken)
+	var rv []*v2.Grant
+	var nextPageToken string
+	var userPermissions []client.UsersPermissions
+	var groupPermissions []client.GroupsPermissions
+
+	defaultPageState := []pagination.PageState{
+		{ResourceTypeID: resourceTypeUser.Id},
+		{ResourceTypeID: resourceTypeGroup.Id},
+	}
+	pToken, bag, err := parseToken(pToken, defaultPageState)
 	if err != nil {
 		return nil, "", nil, err
 	}
 
-	if bag.Current() == nil {
-		bag.Push(pagination.PageState{
-			ResourceTypeID: resourceTypeUser.Id,
-		})
-		bag.Push(pagination.PageState{
-			ResourceTypeID: resourceTypeGroup.Id,
-		})
-	}
-
-	if bag.Current().Token != "" {
-		pageToken, err = strconv.Atoi(bag.Current().Token)
-		if err != nil {
-			return nil, "", nil, err
-		}
-	}
-
 	switch bag.ResourceTypeID() {
 	case resourceTypeUser.Id:
-		userPermissions, nextPageToken, err := o.client.ListGlobalUserPermissions(ctx, client.PageOptions{
-			PerPage: client.ITEMSPERPAGE,
-			Page:    pageToken,
-		})
-		if err != nil {
-			return nil, "", nil, err
-		}
-
-		err = bag.Next(nextPageToken)
+		userPermissions, nextPageToken, err = o.client.GetGlobalUserPermissions(ctx, pToken)
 		if err != nil {
 			return nil, "", nil, err
 		}
@@ -169,15 +150,7 @@ func (o *orgBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken *
 		}
 
 	case resourceTypeGroup.Id:
-		groupPermissions, nextPageToken, err := o.client.ListGlobalGroupPermissions(ctx, client.PageOptions{
-			PerPage: client.ITEMSPERPAGE,
-			Page:    pageToken,
-		})
-		if err != nil {
-			return nil, "", nil, err
-		}
-
-		err = bag.Next(nextPageToken)
+		groupPermissions, nextPageToken, err = o.client.GetGlobalGroupPermissions(ctx, pToken)
 		if err != nil {
 			return nil, "", nil, err
 		}
@@ -197,11 +170,6 @@ func (o *orgBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken *
 		}
 	default:
 		return nil, "", nil, fmt.Errorf("bitbucket(dc) connector: invalid grant resource type for bitbucket org: %s", bag.ResourceTypeID())
-	}
-
-	nextPageToken, err := bag.Marshal()
-	if err != nil {
-		return nil, "", nil, err
 	}
 
 	return rv, nextPageToken, nil, nil

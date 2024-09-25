@@ -30,7 +30,7 @@ func (g *groupBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
 func (g *groupBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId, pToken *pagination.Token) ([]*v2.Resource, string, annotations.Annotations, error) {
 	var rv []*v2.Resource
 
-	groups, nextPageToken, err := g.client.ListGroups(ctx, pToken)
+	groups, nextPageToken, err := g.client.GetGroups(ctx, pToken)
 	if err != nil {
 		return nil, "", nil, err
 	}
@@ -62,71 +62,31 @@ func (g *groupBuilder) Entitlements(ctx context.Context, resource *v2.Resource, 
 }
 
 func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
-	var (
-		pageToken     int
-		err           error
-		rv            []*v2.Grant
-		nextPageToken string
-	)
-	_, bag, err := unmarshalSkipToken(pToken)
-	if err != nil {
-		return nil, "", nil, err
-	}
-
-	if bag.Current() == nil {
-		bag.Push(pagination.PageState{
-			ResourceTypeID: resourceTypeUser.Id,
-		})
-	}
-
-	if bag.Current().Token != "" {
-		pageToken, err = strconv.Atoi(bag.Current().Token)
-		if err != nil {
-			return nil, "", nil, err
-		}
-	}
+	var rv []*v2.Grant
 
 	groupName := resource.Id.Resource
-	switch bag.ResourceTypeID() {
-	case resourceTypeUser.Id:
-		groupMembers, nextPageToken, err := g.client.ListGroupMembers(ctx, client.PageOptions{
-			PerPage: client.ITEMSPERPAGE,
-			Page:    pageToken,
-		}, groupName)
-		if err != nil {
-			return nil, "", nil, err
-		}
-
-		err = bag.Next(nextPageToken)
-		if err != nil {
-			return nil, "", nil, err
-		}
-
-		for _, member := range groupMembers {
-			usrCppy := member
-			ur, err := userResource(ctx, &client.User{
-				Name:         usrCppy.Name,
-				EmailAddress: usrCppy.EmailAddress,
-				Active:       usrCppy.Active,
-				DisplayName:  usrCppy.DisplayName,
-				ID:           usrCppy.ID,
-				Slug:         usrCppy.Slug,
-				Type:         usrCppy.Type,
-			}, resource.Id)
-			if err != nil {
-				return nil, "", nil, fmt.Errorf("error creating user resource for group %s: %w", groupName, err)
-			}
-
-			membershipGrant := grant.NewGrant(resource, "member", ur.Id)
-			rv = append(rv, membershipGrant)
-		}
-	default:
-		return nil, "", nil, fmt.Errorf("bitbucket(dc) connector: invalid grant resource type: %s", bag.ResourceTypeID())
-	}
-
-	nextPageToken, err = bag.Marshal()
+	groupMembers, nextPageToken, err := g.client.GetGroupMembers(ctx, groupName, pToken)
 	if err != nil {
 		return nil, "", nil, err
+	}
+
+	for _, member := range groupMembers {
+		usrCppy := member
+		ur, err := userResource(ctx, &client.User{
+			Name:         usrCppy.Name,
+			EmailAddress: usrCppy.EmailAddress,
+			Active:       usrCppy.Active,
+			DisplayName:  usrCppy.DisplayName,
+			ID:           usrCppy.ID,
+			Slug:         usrCppy.Slug,
+			Type:         usrCppy.Type,
+		}, resource.Id)
+		if err != nil {
+			return nil, "", nil, fmt.Errorf("error creating user resource for group %s: %w", groupName, err)
+		}
+
+		membershipGrant := grant.NewGrant(resource, "member", ur.Id)
+		rv = append(rv, membershipGrant)
 	}
 
 	return rv, nextPageToken, nil, nil
