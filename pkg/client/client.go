@@ -9,8 +9,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strconv"
 
+	"github.com/conductorone/baton-sdk/pkg/pagination"
 	"github.com/conductorone/baton-sdk/pkg/uhttp"
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
 )
@@ -70,6 +70,27 @@ type auth struct {
 	bearerToken    string
 }
 
+func (d *DataCenterClient) checkStatusUnauthorizedError(err error) error {
+	var bitbucketErr *BitbucketError
+	if err == nil {
+		return nil
+	}
+
+	if d.auth.user != "" && d.auth.password != "" {
+		// Only squelch permission errors if using bearer token auth
+		return err
+	}
+
+	if errors.As(err, &bitbucketErr) {
+		if bitbucketErr.ErrorCode != http.StatusUnauthorized {
+			return fmt.Errorf("%s %s", bitbucketErr.Error(), bitbucketErr.ErrorSummary)
+		}
+		return nil
+	}
+
+	return err
+}
+
 func NewClient() *DataCenterClient {
 	return &DataCenterClient{
 		httpClient: &uhttp.BaseHttpClient{},
@@ -97,29 +118,14 @@ func (d *DataCenterClient) WithBearerToken(bitbucketToken string) *DataCenterCli
 	return d
 }
 
-func WithAuthorizationBearerHeader(token string) uhttp.RequestOption {
-	return uhttp.WithHeader("Authorization", "Bearer "+token)
-}
-
-func basicAuth(username, password string) string {
-	auth := username + ":" + password
-	return base64.StdEncoding.EncodeToString([]byte(auth))
-}
-
-func WithSetBasicAuthHeader(username, password string) uhttp.RequestOption {
-	return uhttp.WithHeader("Authorization", "Basic "+basicAuth(username, password))
-}
-
-func WithSetBearerAuthHeader(token string) uhttp.RequestOption {
-	return uhttp.WithHeader("Authorization", "Bearer "+token)
-}
-
-func WithAuthorization(username, password, token string) uhttp.RequestOption {
-	if token != "" {
-		return WithSetBearerAuthHeader(token)
+func (d *DataCenterClient) WithAuthorization() uhttp.RequestOption {
+	// Prefer basic auth to bearer token, since bearer token auth can't get global user/group permissions
+	if d.auth.user != "" && d.auth.password != "" {
+		encodedAuth := base64.StdEncoding.EncodeToString([]byte(d.auth.user + ":" + d.auth.password))
+		return uhttp.WithHeader("Authorization", "Basic "+encodedAuth)
 	}
 
-	return WithSetBasicAuthHeader(username, password)
+	return uhttp.WithHeader("Authorization", "Bearer "+d.auth.bearerToken)
 }
 
 func (d *DataCenterClient) getToken() string {
@@ -222,8 +228,46 @@ func GetCustomErr(req *http.Request, resp *http.Response, err error) *BitbucketE
 	return bbErr
 }
 
-func (d *DataCenterClient) Get(ctx context.Context, req *http.Request, options ...uhttp.DoOption) (*http.Response, error) {
-	resp, err := d.httpClient.Do(req, options...)
+func (d *DataCenterClient) MakeURL(ctx context.Context, path string, queryParams map[string]string) (*url.URL, error) {
+	endpointUrl, err := url.JoinPath(d.baseUrl, path)
+	if err != nil {
+		return nil, err
+	}
+
+	uri, err := url.Parse(endpointUrl)
+	if err != nil {
+		return nil, err
+	}
+
+	q := uri.Query()
+	for k, v := range queryParams {
+		q.Set(k, v)
+	}
+
+	uri.RawQuery = q.Encode()
+	return uri, nil
+}
+
+func (d *DataCenterClient) Do(ctx context.Context, method string, uri *url.URL, body interface{}, response interface{}, reqOptions ...uhttp.RequestOption) (*http.Response, error) {
+	reqOptions = append(reqOptions,
+		uhttp.WithAcceptJSONHeader(),
+		d.WithAuthorization(),
+	)
+	if body != nil {
+		reqOptions = append(reqOptions, uhttp.WithJSONBody(body))
+	}
+
+	doOptions := []uhttp.DoOption{}
+	if response != nil {
+		doOptions = append(doOptions, uhttp.WithJSONResponse(response))
+	}
+
+	req, err := d.httpClient.NewRequest(ctx, method, uri, reqOptions...)
+	if err != nil {
+		return nil, GetCustomErr(req, nil, err)
+	}
+
+	resp, err := d.httpClient.Do(req, doOptions...)
 	if err != nil {
 		return nil, GetCustomErr(req, resp, err)
 	}
@@ -231,827 +275,322 @@ func (d *DataCenterClient) Get(ctx context.Context, req *http.Request, options .
 	return resp, nil
 }
 
-// GetUsers
 // Get all users. Only authenticated users may call this resource.
 // https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-system-maintenance/#api-api-latest-users-get
-func (d *DataCenterClient) GetUsers(ctx context.Context, startPage, limit string) ([]User, Page, error) {
-	var (
-		userData     UsersAPIData
-		page         Page
-		sPage, nPage = "0", "0"
-	)
-	endpointUrl, err := url.JoinPath(d.baseUrl, allUsersEndpoint)
+func (d *DataCenterClient) GetUsers(ctx context.Context, pToken *pagination.Token) ([]User, string, error) {
+	queryParams := pageTokenToQueryParams(pToken)
+	uri, err := d.MakeURL(ctx, allUsersEndpoint, queryParams)
 	if err != nil {
-		return nil, Page{}, err
+		return nil, pToken.Token, err
 	}
 
-	uri, err := url.Parse(endpointUrl)
+	var userData UsersAPIData
+	resp, err := d.Do(ctx, http.MethodGet, uri, nil, &userData)
 	if err != nil {
-		return nil, Page{}, err
+		return nil, pToken.Token, err
 	}
-
-	if startPage != "" {
-		sPage = startPage
-	}
-
-	setRawQuery(uri, sPage, limit)
-	req, err := d.httpClient.NewRequest(ctx,
-		http.MethodGet,
-		uri,
-		uhttp.WithAcceptJSONHeader(),
-		WithAuthorization(d.getUser(), d.getPWD(), d.getToken()),
-	)
-	if err != nil {
-		return nil, Page{}, err
-	}
-
-	resp, err := d.Get(ctx, req, uhttp.WithJSONResponse(&userData))
-	if err != nil {
-		return nil, Page{}, err
-	}
-	err = WithResponse(resp, &userData)
-	if err != nil {
-		return nil, page, err
-	}
-
 	defer resp.Body.Close()
-	sPage = strconv.Itoa(userData.Start)
-	nPage = strconv.Itoa(userData.NextPageStart)
-	if !userData.IsLastPage {
-		page = Page{
-			PreviousPage: &sPage,
-			NextPage:     &nPage,
-			Count:        int64(userData.Size),
-		}
-	}
 
-	return userData.Users, page, nil
+	nextPageToken, err := getNextPageToken(pToken, userData.NextPageStart, userData.IsLastPage)
+	return userData.Users, nextPageToken, err
 }
 
-func (d *DataCenterClient) ListUsers(ctx context.Context, opts PageOptions) ([]User, string, error) {
-	var nextPageToken string = ""
-	users, page, err := d.GetUsers(ctx, strconv.Itoa(opts.Page), strconv.Itoa(opts.PerPage))
-	if err != nil {
-		return users, "", err
-	}
-
-	if page.HasNext() {
-		nextPageToken = *page.NextPage
-	}
-
-	return users, nextPageToken, err
-}
-
-// GetProjects
 // Get projects. Only projects for which the authenticated user has the PROJECT_VIEW permission will be returned.
 // https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-project/#api-api-latest-projects-get
-func (d *DataCenterClient) GetProjects(ctx context.Context, startPage, limit string) ([]Projects, Page, error) {
-	var (
-		projectData  ProjectsAPIData
-		page         Page
-		sPage, nPage = "0", "0"
-	)
-	endpointUrl, err := url.JoinPath(d.baseUrl, allProjectsEndpoint)
+func (d *DataCenterClient) GetProjects(ctx context.Context, pToken *pagination.Token) ([]Projects, string, error) {
+	queryParams := pageTokenToQueryParams(pToken)
+	uri, err := d.MakeURL(ctx, allProjectsEndpoint, queryParams)
 	if err != nil {
-		return nil, Page{}, err
+		return nil, pToken.Token, err
 	}
 
-	uri, err := url.Parse(endpointUrl)
+	var projectData ProjectsAPIData
+	resp, err := d.Do(ctx, http.MethodGet, uri, nil, &projectData)
 	if err != nil {
-		return nil, Page{}, err
+		return nil, pToken.Token, err
 	}
-
-	if startPage != "" {
-		sPage = startPage
-	}
-
-	setRawQuery(uri, sPage, limit)
-	req, err := d.httpClient.NewRequest(ctx,
-		http.MethodGet,
-		uri,
-		uhttp.WithAcceptJSONHeader(),
-		WithAuthorization(d.getUser(), d.getPWD(), d.getToken()),
-	)
-	if err != nil {
-		return nil, Page{}, err
-	}
-
-	resp, err := d.Get(ctx, req, uhttp.WithJSONResponse(&projectData))
-	if err != nil {
-		return nil, Page{}, err
-	}
-	err = WithResponse(resp, &projectData)
-	if err != nil {
-		return nil, page, err
-	}
-
 	defer resp.Body.Close()
-	sPage = strconv.Itoa(projectData.Start)
-	nPage = strconv.Itoa(projectData.NextPageStart)
-	if !projectData.IsLastPage {
-		page = Page{
-			PreviousPage: &sPage,
-			NextPage:     &nPage,
-			Count:        int64(projectData.Size),
-		}
-	}
 
-	return projectData.Projects, page, nil
+	nextPageToken, err := getNextPageToken(pToken, projectData.NextPageStart, projectData.IsLastPage)
+	return projectData.Projects, nextPageToken, err
 }
 
-func (d *DataCenterClient) ListProjects(ctx context.Context, opts PageOptions) ([]Projects, string, error) {
-	var nextPageToken string = ""
-	projects, page, err := d.GetProjects(ctx, strconv.Itoa(opts.Page), strconv.Itoa(opts.PerPage))
+func (d *DataCenterClient) GetRepos(ctx context.Context, pToken *pagination.Token) ([]Repos, string, error) {
+	queryParams := pageTokenToQueryParams(pToken)
+	uri, err := d.MakeURL(ctx, allRepositoriesEndpoint, queryParams)
 	if err != nil {
-		return projects, "", err
+		return nil, pToken.Token, err
 	}
 
-	if page.HasNext() {
-		nextPageToken = *page.NextPage
-	}
-
-	return projects, nextPageToken, err
-}
-
-func (d *DataCenterClient) GetRepos(ctx context.Context, startPage, limit string) ([]Repos, Page, error) {
-	var (
-		repoData     ReposAPIData
-		page         Page
-		sPage, nPage = "0", "0"
-	)
-	endpointUrl, err := url.JoinPath(d.baseUrl, allRepositoriesEndpoint)
+	var repoData ReposAPIData
+	resp, err := d.Do(ctx, http.MethodGet, uri, nil, &repoData)
 	if err != nil {
-		return nil, Page{}, err
+		return nil, pToken.Token, err
 	}
-
-	uri, err := url.Parse(endpointUrl)
-	if err != nil {
-		return nil, Page{}, err
-	}
-
-	if startPage != "" {
-		sPage = startPage
-	}
-
-	setRawQuery(uri, sPage, limit)
-	req, err := d.httpClient.NewRequest(ctx,
-		http.MethodGet,
-		uri,
-		uhttp.WithAcceptJSONHeader(),
-		WithAuthorization(d.getUser(), d.getPWD(), d.getToken()),
-	)
-	if err != nil {
-		return nil, Page{}, err
-	}
-
-	resp, err := d.Get(ctx, req, uhttp.WithJSONResponse(&repoData))
-	if err != nil {
-		return nil, Page{}, err
-	}
-	err = WithResponse(resp, &repoData)
-	if err != nil {
-		return nil, page, err
-	}
-
 	defer resp.Body.Close()
-	sPage = strconv.Itoa(repoData.Start)
-	nPage = strconv.Itoa(repoData.NextPageStart)
-	if !repoData.IsLastPage {
-		page = Page{
-			PreviousPage: &sPage,
-			NextPage:     &nPage,
-			Count:        int64(repoData.Size),
-		}
-	}
 
-	return repoData.Repos, page, nil
-}
-
-func (d *DataCenterClient) ListRepos(ctx context.Context, opts PageOptions) ([]Repos, string, error) {
-	var nextPageToken string = ""
-	repos, page, err := d.GetRepos(ctx, strconv.Itoa(opts.Page), strconv.Itoa(opts.PerPage))
-	if err != nil {
-		return repos, "", err
-	}
-
-	if page.HasNext() {
-		nextPageToken = *page.NextPage
-	}
-
-	return repos, nextPageToken, err
+	nextPageToken, err := getNextPageToken(pToken, repoData.NextPageStart, repoData.IsLastPage)
+	return repoData.Repos, nextPageToken, err
 }
 
 // GetGroups
 // Get groups. The authenticated user must have LICENSED_USER permission or higher to call this resource.
 // https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-permission-management/#api-api-latest-admin-groups-get
-func (d *DataCenterClient) GetGroups(ctx context.Context, startPage, limit string) ([]string, Page, error) {
-	var (
-		groupData    GroupsAPIData
-		page         Page
-		sPage, nPage = "0", "0"
-	)
-	endpointUrl, err := url.JoinPath(d.baseUrl, allGroupsEndpoint)
+func (d *DataCenterClient) GetGroups(ctx context.Context, pToken *pagination.Token) ([]string, string, error) {
+	queryParams := pageTokenToQueryParams(pToken)
+	uri, err := d.MakeURL(ctx, allGroupsEndpoint, queryParams)
 	if err != nil {
-		return nil, Page{}, err
+		return nil, pToken.Token, err
 	}
 
-	uri, err := url.Parse(endpointUrl)
+	var groupData GroupsAPIData
+	resp, err := d.Do(ctx, http.MethodGet, uri, nil, &groupData)
 	if err != nil {
-		return nil, Page{}, err
+		return nil, pToken.Token, err
 	}
-
-	if startPage != "" {
-		sPage = startPage
-	}
-
-	setRawQuery(uri, sPage, limit)
-	req, err := d.httpClient.NewRequest(ctx,
-		http.MethodGet,
-		uri,
-		uhttp.WithAcceptJSONHeader(),
-		WithAuthorization(d.getUser(), d.getPWD(), d.getToken()),
-	)
-	if err != nil {
-		return nil, Page{}, err
-	}
-
-	resp, err := d.Get(ctx, req, uhttp.WithJSONResponse(&groupData))
-	if err != nil {
-		return nil, Page{}, err
-	}
-	err = WithResponse(resp, &groupData)
-	if err != nil {
-		return nil, page, err
-	}
-
 	defer resp.Body.Close()
-	sPage = strconv.Itoa(groupData.Start)
-	nPage = strconv.Itoa(groupData.NextPageStart)
-	if !groupData.IsLastPage {
-		page = Page{
-			PreviousPage: &sPage,
-			NextPage:     &nPage,
-			Count:        int64(groupData.Size),
-		}
-	}
 
-	return groupData.Groups, page, nil
-}
-
-func (d *DataCenterClient) ListGroups(ctx context.Context, opts PageOptions) ([]string, string, error) {
-	var nextPageToken string = ""
-	groups, page, err := d.GetGroups(ctx, strconv.Itoa(opts.Page), strconv.Itoa(opts.PerPage))
-	if err != nil {
-		return groups, "", err
-	}
-
-	if page.HasNext() {
-		nextPageToken = *page.NextPage
-	}
-
-	return groups, nextPageToken, err
+	nextPageToken, err := getNextPageToken(pToken, groupData.NextPageStart, groupData.IsLastPage)
+	return groupData.Groups, nextPageToken, err
 }
 
 // GetGroupMembers
 // Get group members. The authenticated user must have the LICENSED_USER permission to call this resource.
 // https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-permission-management/#api-api-latest-admin-groups-more-members-get
-func (d *DataCenterClient) GetGroupMembers(ctx context.Context, startPage, limit, groupName string) ([]Members, Page, error) {
-	var (
-		memberData   MembersAPIData
-		page         Page
-		sPage, nPage = "0", "0"
-	)
-	endpointUrl := fmt.Sprintf("%s/%s?context=%s", d.baseUrl, allGroupMembersEndpoint, groupName)
-	uri, err := url.Parse(endpointUrl)
+func (d *DataCenterClient) GetGroupMembers(ctx context.Context, groupName string, pToken *pagination.Token) ([]Members, string, error) {
+	queryParams := pageTokenToQueryParams(pToken)
+	queryParams["context"] = groupName
+	uri, err := d.MakeURL(ctx, allGroupMembersEndpoint, queryParams)
 	if err != nil {
-		return nil, Page{}, err
+		return nil, pToken.Token, err
 	}
 
-	if startPage != "" {
-		sPage = startPage
-	}
-
-	setRawQuery(uri, sPage, limit)
-	req, err := d.httpClient.NewRequest(ctx,
-		http.MethodGet,
-		uri,
-		uhttp.WithAcceptJSONHeader(),
-		WithAuthorization(d.getUser(), d.getPWD(), d.getToken()),
-	)
+	var memberData MembersAPIData
+	resp, err := d.Do(ctx, http.MethodGet, uri, nil, &memberData)
 	if err != nil {
-		return nil, Page{}, err
+		return nil, pToken.Token, err
 	}
-
-	resp, err := d.Get(ctx, req, uhttp.WithJSONResponse(&memberData))
-	if err != nil {
-		return nil, Page{}, err
-	}
-	err = WithResponse(resp, &memberData)
-	if err != nil {
-		return nil, page, err
-	}
-
 	defer resp.Body.Close()
-	sPage = strconv.Itoa(memberData.Start)
-	nPage = strconv.Itoa(memberData.NextPageStart)
-	if !memberData.IsLastPage {
-		page = Page{
-			PreviousPage: &sPage,
-			NextPage:     &nPage,
-			Count:        int64(memberData.Size),
-		}
-	}
 
-	return memberData.Members, page, nil
-}
-
-// setRawQuery
-// Query parameters.
-// Start : number for the page (inclusive). If not passed, first page is assumed.
-// limit : Number of items to return. If not passed, a page size of 25 is used.
-func setRawQuery(uri *url.URL, sPage string, limit string) {
-	q := uri.Query()
-	q.Set("start", sPage)
-	q.Set("limit", limit)
-	uri.RawQuery = q.Encode()
-}
-
-func (d *DataCenterClient) ListGroupMembers(ctx context.Context, opts PageOptions, groupName string) ([]Members, string, error) {
-	var nextPageToken string = ""
-	members, page, err := d.GetGroupMembers(ctx,
-		strconv.Itoa(opts.Page),
-		strconv.Itoa(opts.PerPage),
-		groupName,
-	)
-	if err != nil {
-		return members, "", err
-	}
-
-	if page.HasNext() {
-		nextPageToken = *page.NextPage
-	}
-
-	return members, nextPageToken, err
+	nextPageToken, err := getNextPageToken(pToken, memberData.NextPageStart, memberData.IsLastPage)
+	return memberData.Members, nextPageToken, err
 }
 
 // GetGlobalUserPermissions
 // Get users with a global permission
 // https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-permission-management/#api-api-latest-admin-permissions-users-get
-func (d *DataCenterClient) GetGlobalUserPermissions(ctx context.Context, startPage, limit string) ([]UsersPermissions, Page, error) {
-	var (
-		permissionsData GlobalPermissionsAPIData
-		page            Page
-		sPage, nPage    = "0", "0"
-	)
-	endpointUrl, err := url.JoinPath(d.baseUrl, allUsersWithGlobalPermissionEndpoint)
+func (d *DataCenterClient) GetGlobalUserPermissions(ctx context.Context, pToken *pagination.Token) ([]UsersPermissions, string, error) {
+	queryParams := pageTokenToQueryParams(pToken)
+	uri, err := d.MakeURL(ctx, allUsersWithGlobalPermissionEndpoint, queryParams)
 	if err != nil {
-		return nil, Page{}, err
+		return nil, pToken.Token, err
 	}
 
-	uri, err := url.Parse(endpointUrl)
+	var permissionsData GlobalPermissionsAPIData
+	resp, err := d.Do(ctx, http.MethodGet, uri, nil, &permissionsData)
+	// if bearer auth, squelch 403 and return empty list
+	err = d.checkStatusUnauthorizedError(err)
 	if err != nil {
-		return nil, Page{}, err
+		return nil, pToken.Token, err
 	}
-
-	if startPage != "" {
-		sPage = startPage
-	}
-
-	setRawQuery(uri, sPage, limit)
-	req, err := d.httpClient.NewRequest(ctx,
-		http.MethodGet,
-		uri,
-		uhttp.WithAcceptJSONHeader(),
-		WithAuthorization(d.getUser(), d.getPWD(), d.getToken()),
-	)
-	if err != nil {
-		return nil, Page{}, err
-	}
-
-	resp, err := d.Get(ctx, req, uhttp.WithJSONResponse(&permissionsData))
-	if err != nil {
-		return nil, Page{}, err
-	}
-	err = WithResponse(resp, &permissionsData)
-	if err != nil {
-		return nil, page, err
-	}
-
 	defer resp.Body.Close()
-	sPage = strconv.Itoa(permissionsData.Start)
-	nPage = strconv.Itoa(permissionsData.NextPageStart)
-	if !permissionsData.IsLastPage {
-		page = Page{
-			PreviousPage: &sPage,
-			NextPage:     &nPage,
-			Count:        int64(permissionsData.Size),
-		}
-	}
 
-	return permissionsData.UsersPermissions, page, nil
+	nextPageToken, err := getNextPageToken(pToken, permissionsData.NextPageStart, permissionsData.IsLastPage)
+	return permissionsData.UsersPermissions, nextPageToken, err
 }
 
-func (d *DataCenterClient) GetGlobalGroupPermissions(ctx context.Context, startPage, limit string) ([]GroupsPermissions, Page, error) {
-	var (
-		permissionsData GlobalGroupPermissionsAPIData
-		page            Page
-		sPage, nPage    = "0", "0"
-	)
-	endpointUrl, err := url.JoinPath(d.baseUrl, allGroupsWithGlobalPermissionEndpoint)
+func (d *DataCenterClient) RevokeUserGlobalPermission(ctx context.Context, userName string) error {
+	uri, err := d.MakeURL(ctx, allUsersWithGlobalPermissionEndpoint, map[string]string{
+		"name": userName,
+	})
 	if err != nil {
-		return nil, Page{}, err
+		return err
 	}
 
-	uri, err := url.Parse(endpointUrl)
+	resp, err := d.Do(ctx, http.MethodDelete, uri, nil, nil)
 	if err != nil {
-		return nil, Page{}, err
+		return err
 	}
-
-	if startPage != "" {
-		sPage = startPage
-	}
-
-	setRawQuery(uri, sPage, limit)
-	req, err := d.httpClient.NewRequest(ctx,
-		http.MethodGet,
-		uri,
-		uhttp.WithAcceptJSONHeader(),
-		WithAuthorization(d.getUser(), d.getPWD(), d.getToken()),
-	)
-	if err != nil {
-		return nil, Page{}, err
-	}
-
-	resp, err := d.Get(ctx, req, uhttp.WithJSONResponse(&permissionsData))
-	if err != nil {
-		return nil, Page{}, err
-	}
-	err = WithResponse(resp, &permissionsData)
-	if err != nil {
-		return nil, page, err
-	}
-
 	defer resp.Body.Close()
-	sPage = strconv.Itoa(permissionsData.Start)
-	nPage = strconv.Itoa(permissionsData.NextPageStart)
-	if !permissionsData.IsLastPage {
-		page = Page{
-			PreviousPage: &sPage,
-			NextPage:     &nPage,
-			Count:        int64(permissionsData.Size),
-		}
-	}
-
-	return permissionsData.GroupsPermissions, page, nil
+	return nil
 }
 
-func (d *DataCenterClient) ListGlobalUserPermissions(ctx context.Context, opts PageOptions) ([]UsersPermissions, string, error) {
-	var nextPageToken string = ""
-	usersPermissions, page, err := d.GetGlobalUserPermissions(ctx,
-		strconv.Itoa(opts.Page),
-		strconv.Itoa(opts.PerPage),
-	)
+func (d *DataCenterClient) UpdateUserGlobalPermission(ctx context.Context, userName, permission string) error {
+	uri, err := d.MakeURL(ctx, allUsersWithGlobalPermissionEndpoint, map[string]string{
+		"name":       userName,
+		"permission": permission,
+	})
 	if err != nil {
-		return []UsersPermissions{}, "", err
+		return err
 	}
 
-	if page.HasNext() {
-		nextPageToken = *page.NextPage
+	resp, err := d.Do(ctx, http.MethodPut, uri, nil, nil)
+	if err != nil {
+		return err
 	}
-
-	return usersPermissions, nextPageToken, err
+	defer resp.Body.Close()
+	return nil
 }
 
-func (d *DataCenterClient) ListGlobalGroupPermissions(ctx context.Context, opts PageOptions) ([]GroupsPermissions, string, error) {
-	var nextPageToken string = ""
-	groupsPermissions, page, err := d.GetGlobalGroupPermissions(ctx,
-		strconv.Itoa(opts.Page),
-		strconv.Itoa(opts.PerPage),
-	)
+func (d *DataCenterClient) GetGlobalGroupPermissions(ctx context.Context, pToken *pagination.Token) ([]GroupsPermissions, string, error) {
+	queryParams := pageTokenToQueryParams(pToken)
+	uri, err := d.MakeURL(ctx, allGroupsWithGlobalPermissionEndpoint, queryParams)
 	if err != nil {
-		return groupsPermissions, "", err
+		return nil, pToken.Token, err
 	}
 
-	if page.HasNext() {
-		nextPageToken = *page.NextPage
+	var permissionsData GlobalGroupPermissionsAPIData
+	resp, err := d.Do(ctx, http.MethodGet, uri, nil, &permissionsData)
+	// if bearer auth, squelch 403 and return empty list
+	err = d.checkStatusUnauthorizedError(err)
+	if err != nil {
+		return nil, pToken.Token, err
+	}
+	defer resp.Body.Close()
+
+	nextPageToken, err := getNextPageToken(pToken, permissionsData.NextPageStart, permissionsData.IsLastPage)
+	return permissionsData.GroupsPermissions, nextPageToken, err
+}
+
+func (d *DataCenterClient) RevokeGroupGlobalPermission(ctx context.Context, groupName string) error {
+	uri, err := d.MakeURL(ctx, allGroupsWithGlobalPermissionEndpoint, map[string]string{
+		"name": groupName,
+	})
+	if err != nil {
+		return err
 	}
 
-	return groupsPermissions, nextPageToken, err
+	resp, err := d.Do(ctx, http.MethodDelete, uri, nil, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
+func (d *DataCenterClient) UpdateGroupGlobalPermission(ctx context.Context, groupName, permission string) error {
+	uri, err := d.MakeURL(ctx, allGroupsWithGlobalPermissionEndpoint, map[string]string{
+		"name":       groupName,
+		"permission": permission,
+	})
+	if err != nil {
+		return err
+	}
+
+	resp, err := d.Do(ctx, http.MethodPut, uri, nil, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
 }
 
 // GetUserRepositoryPermissions
 // Get users with permission to repository
 // https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-permission-management/#api-api-latest-projects-projectkey-repos-repositoryslug-permissions-users-get
-func (d *DataCenterClient) GetUserRepositoryPermissions(ctx context.Context, startPage, limit, projectKey, repositorySlug string) ([]UsersPermissions, Page, error) {
-	var (
-		permissionData GlobalPermissionsAPIData
-		page           Page
-		sPage, nPage   = "0", "0"
-	)
-	endpointUrl := fmt.Sprintf("%s/%s/%s/repos/%s/%s", d.baseUrl,
+func (d *DataCenterClient) GetUserRepositoryPermissions(ctx context.Context, projectKey, repositorySlug string, pToken *pagination.Token) ([]UsersPermissions, string, error) {
+	queryParams := pageTokenToQueryParams(pToken)
+	path := fmt.Sprintf("%s/%s/repos/%s/%s",
 		allProjectsEndpoint,
 		projectKey,
 		repositorySlug,
 		usersWithPermission,
 	)
-	uri, err := url.Parse(endpointUrl)
+	uri, err := d.MakeURL(ctx, path, queryParams)
 	if err != nil {
-		return nil, Page{}, err
+		return nil, pToken.Token, err
 	}
 
-	if startPage != "" {
-		sPage = startPage
-	}
-
-	setRawQuery(uri, sPage, limit)
-	req, err := d.httpClient.NewRequest(ctx,
-		http.MethodGet,
-		uri,
-		uhttp.WithAcceptJSONHeader(),
-		WithAuthorization(d.getUser(), d.getPWD(), d.getToken()),
-	)
+	var permissionsData GlobalPermissionsAPIData
+	resp, err := d.Do(ctx, http.MethodGet, uri, nil, &permissionsData)
 	if err != nil {
-		return nil, Page{}, err
+		return nil, pToken.Token, err
 	}
-
-	resp, err := d.Get(ctx, req, uhttp.WithJSONResponse(&permissionData))
-	if err != nil {
-		return nil, Page{}, err
-	}
-	err = WithResponse(resp, &permissionData)
-	if err != nil {
-		return nil, page, err
-	}
-
 	defer resp.Body.Close()
-	sPage = strconv.Itoa(permissionData.Start)
-	nPage = strconv.Itoa(permissionData.NextPageStart)
-	if !permissionData.IsLastPage {
-		page = Page{
-			PreviousPage: &sPage,
-			NextPage:     &nPage,
-			Count:        int64(permissionData.Size),
-		}
-	}
 
-	return permissionData.UsersPermissions, page, nil
+	nextPageToken, err := getNextPageToken(pToken, permissionsData.NextPageStart, permissionsData.IsLastPage)
+	return permissionsData.UsersPermissions, nextPageToken, err
 }
 
-func (d *DataCenterClient) ListUserRepositoryPermissions(ctx context.Context, opts PageOptions, projectKey, repositorySlug string) ([]UsersPermissions, string, error) {
-	var nextPageToken string = ""
-	permissions, page, err := d.GetUserRepositoryPermissions(ctx,
-		strconv.Itoa(opts.Page),
-		strconv.Itoa(opts.PerPage),
-		projectKey,
-		repositorySlug,
-	)
-	if err != nil {
-		return permissions, "", err
-	}
-
-	if page.HasNext() {
-		nextPageToken = *page.NextPage
-	}
-
-	return permissions, nextPageToken, err
-}
-
-func (d *DataCenterClient) GetUserProjectsPermissions(ctx context.Context, startPage, limit, projectKey string) ([]UsersPermissions, Page, error) {
-	var (
-		permissionData GlobalPermissionsAPIData
-		page           Page
-		sPage, nPage   = "0", "0"
-	)
-	endpointUrl := fmt.Sprintf("%s/%s/%s/%s", d.baseUrl,
+func (d *DataCenterClient) GetUserProjectsPermissions(ctx context.Context, projectKey string, pToken *pagination.Token) ([]UsersPermissions, string, error) {
+	queryParams := pageTokenToQueryParams(pToken)
+	path := fmt.Sprintf("%s/%s/%s",
 		allProjectsEndpoint,
 		projectKey,
 		usersWithPermission,
 	)
-	uri, err := url.Parse(endpointUrl)
+	uri, err := d.MakeURL(ctx, path, queryParams)
 	if err != nil {
-		return nil, Page{}, err
+		return nil, pToken.Token, err
 	}
 
-	if startPage != "" {
-		sPage = startPage
-	}
-
-	setRawQuery(uri, sPage, limit)
-	req, err := d.httpClient.NewRequest(ctx,
-		http.MethodGet,
-		uri,
-		uhttp.WithAcceptJSONHeader(),
-		WithAuthorization(d.getUser(), d.getPWD(), d.getToken()),
-	)
+	var permissionsData GlobalPermissionsAPIData
+	resp, err := d.Do(ctx, http.MethodGet, uri, nil, &permissionsData)
 	if err != nil {
-		return nil, Page{}, err
+		return nil, pToken.Token, err
 	}
-
-	resp, err := d.Get(ctx, req, uhttp.WithJSONResponse(&permissionData))
-	if err != nil {
-		return nil, Page{}, err
-	}
-	err = WithResponse(resp, &permissionData)
-	if err != nil {
-		return nil, page, err
-	}
-
 	defer resp.Body.Close()
-	sPage = strconv.Itoa(permissionData.Start)
-	nPage = strconv.Itoa(permissionData.NextPageStart)
-	if !permissionData.IsLastPage {
-		page = Page{
-			PreviousPage: &sPage,
-			NextPage:     &nPage,
-			Count:        int64(permissionData.Size),
-		}
-	}
 
-	return permissionData.UsersPermissions, page, nil
+	nextPageToken, err := getNextPageToken(pToken, permissionsData.NextPageStart, permissionsData.IsLastPage)
+	return permissionsData.UsersPermissions, nextPageToken, err
 }
 
-func (d *DataCenterClient) GetGroupProjectsPermissions(ctx context.Context, startPage, limit, projectKey string) ([]GroupsPermissions, Page, error) {
-	var (
-		permissionData GlobalGroupPermissionsAPIData
-		page           Page
-		sPage, nPage   = "0", "0"
-	)
-	strUrl := fmt.Sprintf("%s/%s/%s/%s", d.baseUrl,
+func (d *DataCenterClient) GetGroupProjectsPermissions(ctx context.Context, projectKey string, pToken *pagination.Token) ([]GroupsPermissions, string, error) {
+	queryParams := pageTokenToQueryParams(pToken)
+	path := fmt.Sprintf("%s/%s/%s",
 		allProjectsEndpoint,
 		projectKey,
 		groupsWithPermission,
 	)
-	uri, err := url.Parse(strUrl)
+	uri, err := d.MakeURL(ctx, path, queryParams)
 	if err != nil {
-		return nil, Page{}, err
+		return nil, pToken.Token, err
 	}
 
-	if startPage != "" {
-		sPage = startPage
-	}
-
-	setRawQuery(uri, sPage, limit)
-	req, err := d.httpClient.NewRequest(ctx,
-		http.MethodGet,
-		uri,
-		uhttp.WithAcceptJSONHeader(),
-		WithAuthorization(d.getUser(), d.getPWD(), d.getToken()),
-	)
+	var permissionsData GlobalGroupPermissionsAPIData
+	resp, err := d.Do(ctx, http.MethodGet, uri, nil, &permissionsData)
 	if err != nil {
-		return nil, Page{}, err
+		return nil, pToken.Token, err
 	}
-
-	resp, err := d.Get(ctx, req, uhttp.WithJSONResponse(&permissionData))
-	if err != nil {
-		return nil, Page{}, err
-	}
-	err = WithResponse(resp, &permissionData)
-	if err != nil {
-		return nil, page, err
-	}
-
 	defer resp.Body.Close()
-	sPage = strconv.Itoa(permissionData.Start)
-	nPage = strconv.Itoa(permissionData.NextPageStart)
-	if !permissionData.IsLastPage {
-		page = Page{
-			PreviousPage: &sPage,
-			NextPage:     &nPage,
-			Count:        int64(permissionData.Size),
-		}
-	}
 
-	return permissionData.GroupsPermissions, page, nil
+	nextPageToken, err := getNextPageToken(pToken, permissionsData.NextPageStart, permissionsData.IsLastPage)
+	return permissionsData.GroupsPermissions, nextPageToken, err
 }
 
-func (d *DataCenterClient) ListUserProjectsPermissions(ctx context.Context, opts PageOptions, projectKey string) ([]UsersPermissions, string, error) {
-	var nextPageToken string = ""
-	permissions, page, err := d.GetUserProjectsPermissions(ctx,
-		strconv.Itoa(opts.Page),
-		strconv.Itoa(opts.PerPage),
-		projectKey,
-	)
-	if err != nil {
-		return permissions, "", err
-	}
-
-	if page.HasNext() {
-		nextPageToken = *page.NextPage
-	}
-
-	return permissions, nextPageToken, err
-}
-
-func (d *DataCenterClient) ListGroupProjectsPermissions(ctx context.Context, opts PageOptions, projectKey string) ([]GroupsPermissions, string, error) {
-	var nextPageToken string = ""
-	permissions, page, err := d.GetGroupProjectsPermissions(ctx,
-		strconv.Itoa(opts.Page),
-		strconv.Itoa(opts.PerPage),
-		projectKey,
-	)
-	if err != nil {
-		return permissions, "", err
-	}
-
-	if page.HasNext() {
-		nextPageToken = *page.NextPage
-	}
-
-	return permissions, nextPageToken, err
-}
-
-func WithResponse(resp *http.Response, v any) error {
-	bytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
-
-	err = json.Unmarshal(bytes, v)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (d *DataCenterClient) GetGroupRepositoryPermissions(ctx context.Context, startPage, limit, projectKey, repositorySlug string) ([]GroupsPermissions, Page, error) {
-	var (
-		permissionData GroupPermissionsAPIData
-		page           Page
-		sPage, nPage   = "0", "0"
-	)
-	endpointUrl := fmt.Sprintf("%s/%s/%s/repos/%s/%s", d.baseUrl,
+func (d *DataCenterClient) GetGroupRepositoryPermissions(ctx context.Context, projectKey, repositorySlug string, pToken *pagination.Token) ([]GroupsPermissions, string, error) {
+	queryParams := pageTokenToQueryParams(pToken)
+	path := fmt.Sprintf("%s/%s/repos/%s/%s",
 		allProjectsEndpoint,
 		projectKey,
 		repositorySlug,
 		groupsWithPermission,
 	)
-	uri, err := url.Parse(endpointUrl)
+	uri, err := d.MakeURL(ctx, path, queryParams)
 	if err != nil {
-		return nil, Page{}, err
+		return nil, pToken.Token, err
 	}
 
-	if startPage != "" {
-		sPage = startPage
-	}
-
-	setRawQuery(uri, sPage, limit)
-	req, err := d.httpClient.NewRequest(ctx,
-		http.MethodGet,
-		uri,
-		uhttp.WithAcceptJSONHeader(),
-		WithAuthorization(d.getUser(), d.getPWD(), d.getToken()),
-	)
+	var permissionsData GroupPermissionsAPIData
+	resp, err := d.Do(ctx, http.MethodGet, uri, nil, &permissionsData)
 	if err != nil {
-		return nil, Page{}, err
+		return nil, pToken.Token, err
 	}
-
-	resp, err := d.Get(ctx, req, uhttp.WithJSONResponse(&permissionData))
-	if err != nil {
-		return nil, Page{}, err
-	}
-	err = WithResponse(resp, &permissionData)
-	if err != nil {
-		return nil, page, err
-	}
-
 	defer resp.Body.Close()
-	sPage = strconv.Itoa(permissionData.Start)
-	nPage = strconv.Itoa(permissionData.NextPageStart)
-	if !permissionData.IsLastPage {
-		page = Page{
-			PreviousPage: &sPage,
-			NextPage:     &nPage,
-			Count:        int64(permissionData.Size),
-		}
-	}
 
-	return permissionData.GroupsPermissions, page, nil
-}
-
-func (d *DataCenterClient) ListGroupRepositoryPermissions(ctx context.Context, opts PageOptions, projectKey, repositorySlug string) ([]GroupsPermissions, string, error) {
-	var nextPageToken string = ""
-	permissions, page, err := d.GetGroupRepositoryPermissions(ctx,
-		strconv.Itoa(opts.Page),
-		strconv.Itoa(opts.PerPage),
-		projectKey,
-		repositorySlug,
-	)
-	if err != nil {
-		return permissions, "", err
-	}
-
-	if page.HasNext() {
-		nextPageToken = *page.NextPage
-	}
-
-	return permissions, nextPageToken, err
+	nextPageToken, err := getNextPageToken(pToken, permissionsData.NextPageStart, permissionsData.IsLastPage)
+	return permissionsData.GroupsPermissions, nextPageToken, err
 }
 
 // AddUserToGroups
 // Add a user to one or more groups.
 // https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-permission-management/#api-api-latest-admin-users-add-groups-post
 func (d *DataCenterClient) AddUserToGroups(ctx context.Context, groupName, userName string) error {
+	uri, err := d.MakeURL(ctx, addUserToGroupsEndpoint, nil)
+	if err != nil {
+		return err
+	}
+
 	var (
 		body struct {
 			Groups []string `json:"groups"`
@@ -1059,41 +598,17 @@ func (d *DataCenterClient) AddUserToGroups(ctx context.Context, groupName, userN
 		}
 		payload = []byte(fmt.Sprintf(`{"groups": ["%s"], "user": "%s"}`, groupName, userName))
 	)
-	endpointUrl, err := url.JoinPath(d.baseUrl, addUserToGroupsEndpoint)
-	if err != nil {
-		return err
-	}
-
-	uri, err := url.Parse(endpointUrl)
-	if err != nil {
-		return err
-	}
 
 	err = json.Unmarshal(payload, &body)
 	if err != nil {
 		return err
 	}
 
-	req, err := d.httpClient.NewRequest(ctx,
-		http.MethodPost,
-		uri,
-		uhttp.WithAcceptJSONHeader(),
-		WithAuthorization(d.getUser(), d.getPWD(), d.getToken()),
-		uhttp.WithJSONBody(body),
-	)
+	resp, err := d.Do(ctx, http.MethodPost, uri, body, nil)
 	if err != nil {
 		return err
 	}
-
-	resp, err := d.httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return errors.New("user not added")
-	}
 
 	return nil
 }
@@ -1102,6 +617,11 @@ func (d *DataCenterClient) AddUserToGroups(ctx context.Context, groupName, userN
 // Remove user from group
 // https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-permission-management/#api-api-latest-admin-users-remove-group-post
 func (d *DataCenterClient) RemoveUserFromGroup(ctx context.Context, userName, groupName string) error {
+	uri, err := d.MakeURL(ctx, removeUserFromGroupEndpoint, nil)
+	if err != nil {
+		return err
+	}
+
 	var (
 		body struct {
 			Context  string `json:"context"`
@@ -1109,41 +629,17 @@ func (d *DataCenterClient) RemoveUserFromGroup(ctx context.Context, userName, gr
 		}
 		payload = []byte(fmt.Sprintf(`{"context": "%s", "itemName": "%s"}`, userName, groupName))
 	)
-	endpointUrl, err := url.JoinPath(d.baseUrl, removeUserFromGroupEndpoint)
-	if err != nil {
-		return err
-	}
-
-	uri, err := url.Parse(endpointUrl)
-	if err != nil {
-		return err
-	}
 
 	err = json.Unmarshal(payload, &body)
 	if err != nil {
 		return err
 	}
 
-	req, err := d.httpClient.NewRequest(ctx,
-		http.MethodPost,
-		uri,
-		uhttp.WithAcceptJSONHeader(),
-		WithAuthorization(d.getUser(), d.getPWD(), d.getToken()),
-		uhttp.WithJSONBody(body),
-	)
+	resp, err := d.Do(ctx, http.MethodPost, uri, body, nil)
 	if err != nil {
 		return err
 	}
-
-	resp, err := d.httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return errors.New("user not removed")
-	}
 
 	return nil
 }
@@ -1152,38 +648,28 @@ func (d *DataCenterClient) RemoveUserFromGroup(ctx context.Context, userName, gr
 // Update user repository permission
 // https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-permission-management/#api-api-latest-projects-projectkey-repos-repositoryslug-permissions-users-put
 func (d *DataCenterClient) UpdateUserRepositoryPermission(ctx context.Context, projectKey, repositorySlug, userName, permission string) error {
-	endpointUrl := fmt.Sprintf("%s/%s/%s/repos/%s/%s?name=%s&permission=%s",
-		d.baseUrl,
+	path := fmt.Sprintf("%s/%s/repos/%s/%s",
 		allProjectsEndpoint,
 		projectKey,
 		repositorySlug,
 		usersWithPermission,
-		userName,
-		permission,
 	)
-	uri, err := url.Parse(endpointUrl)
+
+	uri, err := d.MakeURL(ctx, path, map[string]string{
+		"name":       userName,
+		"permission": permission,
+	})
 	if err != nil {
 		return err
 	}
 
-	req, err := d.httpClient.NewRequest(ctx,
-		http.MethodPut,
-		uri,
-		uhttp.WithAcceptJSONHeader(),
-		WithAuthorization(d.getUser(), d.getPWD(), d.getToken()),
-	)
+	resp, err := d.Do(ctx, http.MethodPut, uri, nil, nil)
 	if err != nil {
 		return err
 	}
-
-	resp, err := d.httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
-		return errors.New("user not added")
+		return fmt.Errorf("user not updated. status code %d", resp.StatusCode)
 	}
 
 	return nil
@@ -1194,38 +680,29 @@ func (d *DataCenterClient) UpdateUserRepositoryPermission(ctx context.Context, p
 // The authenticated user must have REPO_ADMIN permission for the specified repository or a higher project or global permission to call this resource.
 // https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-permission-management/#api-api-latest-projects-projectkey-repos-repositoryslug-permissions-groups-put
 func (d *DataCenterClient) UpdateGroupRepositoryPermission(ctx context.Context, projectKey, repositorySlug, groupName, permission string) error {
-	endpointUrl := fmt.Sprintf("%s/%s/%s/repos/%s/%s?name=%s&permission=%s",
-		d.baseUrl,
+	path := fmt.Sprintf("%s/%s/repos/%s/%s",
 		allProjectsEndpoint,
 		projectKey,
 		repositorySlug,
 		groupsWithPermission,
-		groupName,
-		permission,
 	)
-	uri, err := url.Parse(endpointUrl)
+
+	uri, err := d.MakeURL(ctx, path, map[string]string{
+		"name":       groupName,
+		"permission": permission,
+	})
 	if err != nil {
 		return err
 	}
 
-	req, err := d.httpClient.NewRequest(ctx,
-		http.MethodPut,
-		uri,
-		uhttp.WithAcceptJSONHeader(),
-		WithAuthorization(d.getUser(), d.getPWD(), d.getToken()),
-	)
+	resp, err := d.Do(ctx, http.MethodPut, uri, nil, nil)
 	if err != nil {
 		return err
-	}
-
-	resp, err := d.httpClient.Do(req)
-	if err != nil {
-		return GetCustomErr(req, resp, err)
 	}
 
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
-		return errors.New("group not added")
+		return fmt.Errorf("group not updated. status code %d", resp.StatusCode)
 	}
 
 	return nil
@@ -1235,37 +712,27 @@ func (d *DataCenterClient) UpdateGroupRepositoryPermission(ctx context.Context, 
 // Revoke group repository permission
 // https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-permission-management/#api-api-latest-projects-projectkey-repos-repositoryslug-permissions-groups-delete
 func (d *DataCenterClient) RevokeGroupRepositoryPermission(ctx context.Context, projectKey, repositorySlug, groupName string) error {
-	endpointUrl := fmt.Sprintf("%s/%s/%s/repos/%s/%s?name=%s",
-		d.baseUrl,
+	path := fmt.Sprintf("%s/%s/repos/%s/%s",
 		allProjectsEndpoint,
 		projectKey,
 		repositorySlug,
 		groupsWithPermission,
-		groupName,
 	)
-	uri, err := url.Parse(endpointUrl)
+	uri, err := d.MakeURL(ctx, path, map[string]string{
+		"name": groupName,
+	})
 	if err != nil {
 		return err
 	}
 
-	req, err := d.httpClient.NewRequest(ctx,
-		http.MethodDelete,
-		uri,
-		uhttp.WithAcceptJSONHeader(),
-		WithAuthorization(d.getUser(), d.getPWD(), d.getToken()),
-	)
-	if err != nil {
-		return err
-	}
-
-	resp, err := d.httpClient.Do(req)
+	resp, err := d.Do(ctx, http.MethodDelete, uri, nil, nil)
 	if err != nil {
 		return err
 	}
 
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
-		return errors.New("group not added")
+		return fmt.Errorf("group not removed. status code %d", resp.StatusCode)
 	}
 
 	return nil
@@ -1275,37 +742,27 @@ func (d *DataCenterClient) RevokeGroupRepositoryPermission(ctx context.Context, 
 // Revoke user repository permission
 // https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-permission-management/#api-api-latest-projects-projectkey-repos-repositoryslug-permissions-users-delete
 func (d *DataCenterClient) RevokeUserRepositoryPermission(ctx context.Context, projectKey, repositorySlug, userName string) error {
-	endpointUrl := fmt.Sprintf("%s/%s/%s/repos/%s/%s?name=%s",
-		d.baseUrl,
+	path := fmt.Sprintf("%s/%s/repos/%s/%s",
 		allProjectsEndpoint,
 		projectKey,
 		repositorySlug,
 		usersWithPermission,
-		userName,
 	)
-	uri, err := url.Parse(endpointUrl)
+	uri, err := d.MakeURL(ctx, path, map[string]string{
+		"name": userName,
+	})
 	if err != nil {
 		return err
 	}
 
-	req, err := d.httpClient.NewRequest(ctx,
-		http.MethodDelete,
-		uri,
-		uhttp.WithAcceptJSONHeader(),
-		WithAuthorization(d.getUser(), d.getPWD(), d.getToken()),
-	)
-	if err != nil {
-		return err
-	}
-
-	resp, err := d.httpClient.Do(req)
+	resp, err := d.Do(ctx, http.MethodDelete, uri, nil, nil)
 	if err != nil {
 		return err
 	}
 
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
-		return errors.New("user not added")
+		return fmt.Errorf("user not removed. status code %d", resp.StatusCode)
 	}
 
 	return nil
@@ -1315,36 +772,26 @@ func (d *DataCenterClient) RevokeUserRepositoryPermission(ctx context.Context, p
 // Revoke user project permission
 // https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-project/#api-api-latest-projects-projectkey-permissions-users-delete
 func (d *DataCenterClient) RevokeUserProjectPermission(ctx context.Context, projectKey, userName string) error {
-	endpointUrl := fmt.Sprintf("%s/%s/%s/%s?name=%s",
-		d.baseUrl,
+	path := fmt.Sprintf("%s/%s/%s",
 		allProjectsEndpoint,
 		projectKey,
 		usersWithPermission,
-		userName,
 	)
-	uri, err := url.Parse(endpointUrl)
+	uri, err := d.MakeURL(ctx, path, map[string]string{
+		"name": userName,
+	})
 	if err != nil {
 		return err
 	}
 
-	req, err := d.httpClient.NewRequest(ctx,
-		http.MethodDelete,
-		uri,
-		uhttp.WithAcceptJSONHeader(),
-		WithAuthorization(d.getUser(), d.getPWD(), d.getToken()),
-	)
-	if err != nil {
-		return err
-	}
-
-	resp, err := d.httpClient.Do(req)
+	resp, err := d.Do(ctx, http.MethodDelete, uri, nil, nil)
 	if err != nil {
 		return err
 	}
 
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
-		return errors.New("user not added")
+		return fmt.Errorf("user not removed. status code %d", resp.StatusCode)
 	}
 
 	return nil
@@ -1354,36 +801,26 @@ func (d *DataCenterClient) RevokeUserProjectPermission(ctx context.Context, proj
 // Revoke group project permission.
 // https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-project/#api-api-latest-projects-projectkey-permissions-groups-delete
 func (d *DataCenterClient) RevokeGroupProjectPermission(ctx context.Context, projectKey, groupName string) error {
-	endpointUrl := fmt.Sprintf("%s/%s/%s/%s?name=%s",
-		d.baseUrl,
+	path := fmt.Sprintf("%s/%s/%s",
 		allProjectsEndpoint,
 		projectKey,
 		groupsWithPermission,
-		groupName,
 	)
-	uri, err := url.Parse(endpointUrl)
+	uri, err := d.MakeURL(ctx, path, map[string]string{
+		"name": groupName,
+	})
 	if err != nil {
 		return err
 	}
 
-	req, err := d.httpClient.NewRequest(ctx,
-		http.MethodDelete,
-		uri,
-		uhttp.WithAcceptJSONHeader(),
-		WithAuthorization(d.getUser(), d.getPWD(), d.getToken()),
-	)
+	resp, err := d.Do(ctx, http.MethodDelete, uri, nil, nil)
 	if err != nil {
 		return err
-	}
-
-	resp, err := d.httpClient.Do(req)
-	if err != nil {
-		return GetCustomErr(req, resp, err)
 	}
 
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
-		return errors.New("user not added")
+		return fmt.Errorf("group not removed. status code %d", resp.StatusCode)
 	}
 
 	return nil
@@ -1393,37 +830,27 @@ func (d *DataCenterClient) RevokeGroupProjectPermission(ctx context.Context, pro
 // Update user project permission. Available project permissions are: PROJECT_READ, PROJECT_WRITE, PROJECT_ADMIN
 // https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-project/#api-api-latest-projects-projectkey-permissions-users-put
 func (d *DataCenterClient) UpdateUserProjectPermission(ctx context.Context, projectKey, userName, permission string) error {
-	endpointUrl := fmt.Sprintf("%s/%s/%s/%s?name=%s&permission=%s",
-		d.baseUrl,
+	path := fmt.Sprintf("%s/%s/%s",
 		allProjectsEndpoint,
 		projectKey,
 		usersWithPermission,
-		userName,
-		permission,
 	)
-	uri, err := url.Parse(endpointUrl)
+	uri, err := d.MakeURL(ctx, path, map[string]string{
+		"name":       userName,
+		"permission": permission,
+	})
 	if err != nil {
 		return err
 	}
 
-	req, err := d.httpClient.NewRequest(ctx,
-		http.MethodPut,
-		uri,
-		uhttp.WithAcceptJSONHeader(),
-		WithAuthorization(d.getUser(), d.getPWD(), d.getToken()),
-	)
+	resp, err := d.Do(ctx, http.MethodPut, uri, nil, nil)
 	if err != nil {
 		return err
 	}
-
-	resp, err := d.httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-
 	defer resp.Body.Close()
+
 	if resp.StatusCode != http.StatusNoContent {
-		return errors.New("project not updated")
+		return fmt.Errorf("project not updated. status code %d", resp.StatusCode)
 	}
 
 	return nil
@@ -1433,37 +860,27 @@ func (d *DataCenterClient) UpdateUserProjectPermission(ctx context.Context, proj
 // Update group project permission. Available project permissions are: PROJECT_READ, PROJECT_WRITE, PROJECT_ADMIN
 // https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-project/#api-api-latest-projects-projectkey-permissions-groups-put
 func (d *DataCenterClient) UpdateGroupProjectPermission(ctx context.Context, projectKey, groupName, permission string) error {
-	endpointUrl := fmt.Sprintf("%s/%s/%s/%s?name=%s&permission=%s",
-		d.baseUrl,
+	path := fmt.Sprintf("%s/%s/%s",
 		allProjectsEndpoint,
 		projectKey,
 		groupsWithPermission,
-		groupName,
-		permission,
 	)
-	uri, err := url.Parse(endpointUrl)
+	uri, err := d.MakeURL(ctx, path, map[string]string{
+		"name":       groupName,
+		"permission": permission,
+	})
 	if err != nil {
 		return err
 	}
 
-	req, err := d.httpClient.NewRequest(ctx,
-		http.MethodPut,
-		uri,
-		uhttp.WithAcceptJSONHeader(),
-		WithAuthorization(d.getUser(), d.getPWD(), d.getToken()),
-	)
+	resp, err := d.Do(ctx, http.MethodPut, uri, nil, nil)
 	if err != nil {
 		return err
 	}
-
-	resp, err := d.httpClient.Do(req)
-	if err != nil {
-		return GetCustomErr(req, resp, err)
-	}
-
 	defer resp.Body.Close()
+
 	if resp.StatusCode != http.StatusNoContent {
-		return errors.New("project not updated")
+		return fmt.Errorf("project not updated. status code %d", resp.StatusCode)
 	}
 
 	return nil

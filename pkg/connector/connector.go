@@ -21,6 +21,7 @@ func (c *Connector) ResourceSyncers(ctx context.Context) []connectorbuilder.Reso
 		newUserBuilder(c.client),
 		newProjectBuilder(c.client),
 		newGroupBuilder(c.client),
+		newOrgBuilder(c.client),
 	}
 	if !c.skipRepos {
 		resourceSyncers = append(resourceSyncers, newRepoBuilder(c.client))

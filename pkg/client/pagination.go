@@ -1,25 +1,55 @@
 package client
 
-// Page is base struct for resource pagination.
-type Page struct {
-	PreviousPage *string `json:"previous_page"`
-	NextPage     *string `json:"nextPageStart"`
-	Count        int64   `json:"size"`
+import (
+	"strconv"
+
+	"github.com/conductorone/baton-sdk/pkg/pagination"
+)
+
+// To fetch 1000 results
+// https://confluence.atlassian.com/bitbucketserverkb/how-to-apply-the-limit-filter-in-bitbucket-server-and-datacenter-rest-api-and-query-more-than-the-max-limit-of-1000-results-1142440445.html
+const ITEMSPERPAGE = 1000
+
+func pageTokenToQueryParams(pToken *pagination.Token) map[string]string {
+	queryParams := map[string]string{
+		"start": "0",
+		"limit": strconv.Itoa(ITEMSPERPAGE),
+	}
+	if pToken == nil || pToken.Token == "" {
+		return queryParams
+	}
+
+	bag := &pagination.Bag{}
+	err := bag.Unmarshal(pToken.Token)
+	if err != nil {
+		return queryParams
+	}
+
+	if bag.PageToken() != "" {
+		queryParams["start"] = bag.PageToken()
+	}
+
+	return queryParams
 }
 
-// PageOptions is options for list method of paginatable resources.
-// It's used to create query string.
-type PageOptions struct {
-	PerPage int `url:"limit,omitempty"`
-	Page    int `url:"page,omitempty"`
-}
+func getNextPageToken(pToken *pagination.Token, nextPageStart int, isLastPage bool) (string, error) {
+	bag := &pagination.Bag{}
+	if pToken == nil || pToken.Token == "" {
+		bag.Push(pagination.PageState{
+			Token: strconv.Itoa(nextPageStart),
+		})
+		return bag.Marshal()
+	}
 
-// HasPrev checks if the Page has previous page.
-func (p Page) HasPrev() bool {
-	return (p.PreviousPage != nil)
-}
+	err := bag.Unmarshal(pToken.Token)
+	if err != nil {
+		return "", err
+	}
 
-// HasNext checks if the Page has next page.
-func (p Page) HasNext() bool {
-	return (p.NextPage != nil)
+	if isLastPage {
+		bag.Pop()
+		return bag.Marshal()
+	}
+
+	return bag.NextToken(strconv.Itoa(nextPageStart))
 }

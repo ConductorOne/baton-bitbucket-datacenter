@@ -2,13 +2,60 @@ package connector
 
 import (
 	"context"
-	"strconv"
 
 	"github.com/conductorone/baton-bitbucket-datacenter/pkg/client"
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
 	"github.com/conductorone/baton-sdk/pkg/annotations"
 	"github.com/conductorone/baton-sdk/pkg/pagination"
+	rs "github.com/conductorone/baton-sdk/pkg/types/resource"
 )
+
+func userResource(_ context.Context, user *client.User, parentResourceID *v2.ResourceId) (*v2.Resource, error) {
+	var userStatus v2.UserTrait_Status_Status = v2.UserTrait_Status_STATUS_ENABLED
+	firstName, lastName := rs.SplitFullName(user.Name)
+	profile := map[string]interface{}{
+		"login":      user.Slug,
+		"first_name": firstName,
+		"last_name":  lastName,
+		"email":      user.EmailAddress,
+		"user_id":    user.ID,
+		"user_slug":  user.Slug,
+	}
+
+	switch user.Active {
+	case true:
+		userStatus = v2.UserTrait_Status_STATUS_ENABLED
+	case false:
+		userStatus = v2.UserTrait_Status_STATUS_DISABLED
+	}
+
+	userTraits := []rs.UserTraitOption{
+		rs.WithUserProfile(profile),
+		rs.WithStatus(userStatus),
+		rs.WithUserLogin(user.Slug),
+		rs.WithEmail(user.EmailAddress, true),
+	}
+
+	displayName := user.Name
+	if displayName == "" {
+		displayName = user.Slug
+	}
+	if displayName == "" {
+		displayName = user.EmailAddress
+	}
+
+	ret, err := rs.NewUserResource(
+		displayName,
+		resourceTypeUser,
+		user.ID,
+		userTraits,
+		rs.WithParentResourceID(parentResourceID))
+	if err != nil {
+		return nil, err
+	}
+
+	return ret, nil
+}
 
 type userBuilder struct {
 	resourceType *v2.ResourceType
@@ -22,23 +69,9 @@ func (u *userBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
 // List returns all the users from the database as resource objects.
 // Users include a UserTrait because they are the 'shape' of a standard user.
 func (u *userBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId, pToken *pagination.Token) ([]*v2.Resource, string, annotations.Annotations, error) {
-	var (
-		pageToken int
-		err       error
-		rv        []*v2.Resource
-	)
-	if pToken.Token != "" {
-		pageToken, err = strconv.Atoi(pToken.Token)
-		if err != nil {
-			return nil, "", nil, err
-		}
-	}
+	var rv []*v2.Resource
 
-	users, nextPageToken, err := u.client.ListUsers(ctx, client.PageOptions{
-		PerPage: ITEMSPERPAGE,
-		Page:    pageToken,
-	})
-	err = checkStatusUnauthorizedError(ctx, err)
+	users, nextPageToken, err := u.client.GetUsers(ctx, pToken)
 	if err != nil {
 		return nil, "", nil, err
 	}

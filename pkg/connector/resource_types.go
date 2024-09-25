@@ -2,11 +2,8 @@ package connector
 
 import (
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
+	"github.com/conductorone/baton-sdk/pkg/annotations"
 )
-
-// To fetch 1000 results
-// https://confluence.atlassian.com/bitbucketserverkb/how-to-apply-the-limit-filter-in-bitbucket-server-and-datacenter-rest-api-and-query-more-than-the-max-limit-of-1000-results-1142440445.html
-const ITEMSPERPAGE = 1000
 
 var (
 	resourceTypeUser = &v2.ResourceType{
@@ -15,14 +12,12 @@ var (
 		Traits: []v2.ResourceType_Trait{
 			v2.ResourceType_TRAIT_USER,
 		},
-		Annotations: annotationsForUserResourceType(),
+		Annotations: annotations.New(&v2.SkipEntitlementsAndGrants{}),
 	}
 	resourceTypeProject = &v2.ResourceType{
 		Id:          "project",
 		DisplayName: "Project",
-		Traits: []v2.ResourceType_Trait{
-			v2.ResourceType_TRAIT_GROUP,
-		},
+		Traits:      []v2.ResourceType_Trait{},
 	}
 	resourceTypeRepository = &v2.ResourceType{
 		Id:          "repository",
@@ -35,5 +30,10 @@ var (
 		Traits: []v2.ResourceType_Trait{
 			v2.ResourceType_TRAIT_GROUP,
 		},
+	}
+	resourceTypeOrg = &v2.ResourceType{
+		Id:          "org",
+		DisplayName: "Organization",
+		Traits:      []v2.ResourceType_Trait{},
 	}
 )

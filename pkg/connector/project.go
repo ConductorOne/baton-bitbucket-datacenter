@@ -12,9 +12,34 @@ import (
 	"github.com/conductorone/baton-sdk/pkg/pagination"
 	ent "github.com/conductorone/baton-sdk/pkg/types/entitlement"
 	"github.com/conductorone/baton-sdk/pkg/types/grant"
+	rs "github.com/conductorone/baton-sdk/pkg/types/resource"
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
 	"go.uber.org/zap"
 )
+
+// Create a new connector resource for an Bitbucket Project.
+func projectResource(_ context.Context, project *client.Projects, parentResourceID *v2.ResourceId) (*v2.Resource, error) {
+	profile := map[string]interface{}{
+		"project_id":   project.ID,
+		"project_name": project.Name,
+		"project_key":  project.Key,
+	}
+
+	groupTraitOptions := []rs.GroupTraitOption{rs.WithGroupProfile(profile)}
+	resource, err := rs.NewGroupResource(
+		project.Name,
+		resourceTypeProject,
+		project.Key,
+		groupTraitOptions,
+		rs.WithParentResourceID(parentResourceID),
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return resource, nil
+}
 
 type projectBuilder struct {
 	resourceType *v2.ResourceType
@@ -37,39 +62,9 @@ func (p *projectBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
 // List returns all the projects from the database as resource objects.
 // Projects include a ProjectTrait because they are the 'shape' of a standard project.
 func (p *projectBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId, pToken *pagination.Token) ([]*v2.Resource, string, annotations.Annotations, error) {
-	var (
-		pageToken int
-		err       error
-		rv        []*v2.Resource
-	)
-	_, bag, err := unmarshalSkipToken(pToken)
-	if err != nil {
-		return nil, "", nil, err
-	}
+	var rv []*v2.Resource
 
-	if bag.Current() == nil {
-		bag.Push(pagination.PageState{
-			ResourceTypeID: resourceTypeProject.Id,
-		})
-	}
-
-	if bag.Current().Token != "" {
-		pageToken, err = strconv.Atoi(bag.Current().Token)
-		if err != nil {
-			return nil, "", nil, err
-		}
-	}
-
-	projects, nextPageToken, err := p.client.ListProjects(ctx, client.PageOptions{
-		PerPage: ITEMSPERPAGE,
-		Page:    pageToken,
-	})
-	err = checkStatusUnauthorizedError(ctx, err)
-	if err != nil {
-		return nil, "", nil, err
-	}
-
-	err = bag.Next(nextPageToken)
+	projects, nextPageToken, err := p.client.GetProjects(ctx, pToken)
 	if err != nil {
 		return nil, "", nil, err
 	}
@@ -81,11 +76,6 @@ func (p *projectBuilder) List(ctx context.Context, parentResourceID *v2.Resource
 			return nil, "", nil, err
 		}
 		rv = append(rv, ur)
-	}
-
-	nextPageToken, err = bag.Marshal()
-	if err != nil {
-		return nil, "", nil, err
 	}
 
 	return rv, nextPageToken, nil, nil
@@ -113,72 +103,47 @@ func (p *projectBuilder) Entitlements(_ context.Context, resource *v2.Resource, 
 
 func (p *projectBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
 	var (
-		pageToken                 int
-		err                       error
-		rv                        []*v2.Grant
-		projectKey, nextPageToken string
-		usersPermissions          []client.UsersPermissions
-		groupsPermissions         []client.GroupsPermissions
+		rv                []*v2.Grant
+		nextPageToken     string
+		usersPermissions  []client.UsersPermissions
+		groupsPermissions []client.GroupsPermissions
+		err               error
 	)
-	_, bag, err := unmarshalSkipToken(pToken)
+
+	defaultPageState := []pagination.PageState{
+		{ResourceTypeID: resourceTypeGroup.Id},
+		{ResourceTypeID: resourceTypeUser.Id},
+	}
+	pToken, bag, err := parseToken(pToken, defaultPageState)
 	if err != nil {
 		return nil, "", nil, err
 	}
 
-	if bag.Current() == nil {
-		// Push onto stack in reverse
-		bag.Push(pagination.PageState{
-			ResourceTypeID: resourceTypeGroup.Id,
-		})
-		bag.Push(pagination.PageState{
-			ResourceTypeID: resourceTypeUser.Id,
-		})
-	}
-
-	if bag.Current().Token != "" {
-		pageToken, err = strconv.Atoi(bag.Current().Token)
-		if err != nil {
-			return nil, "", nil, err
-		}
-	}
-
-	projectKey = resource.Id.Resource
+	projectKey := resource.Id.Resource
 
 	switch bag.ResourceTypeID() {
 	case resourceTypeGroup.Id:
-		groupsPermissions, nextPageToken, err = p.client.ListGroupProjectsPermissions(ctx, client.PageOptions{
-			PerPage: ITEMSPERPAGE,
-			Page:    pageToken,
-		}, projectKey)
-		if err != nil {
-			return nil, "", nil, err
-		}
-
-		err = bag.Next(nextPageToken)
+		groupsPermissions, nextPageToken, err = p.client.GetGroupProjectsPermissions(ctx, projectKey, pToken)
 		if err != nil {
 			return nil, "", nil, err
 		}
 
 		for _, member := range groupsPermissions {
-			grpCppy := member.Group
-			gr, err := groupResource(ctx, grpCppy.Name, resource.Id)
+			gr, err := groupResource(ctx, member.Group.Name, nil)
 			if err != nil {
-				return nil, "", nil, fmt.Errorf("error creating group resource for project %s: %w", resource.Id.Resource, err)
+				return nil, "", nil, fmt.Errorf("error creating group resource %s for project %s: %w", member.Group.Name, resource.Id.Resource, err)
 			}
 
-			membershipGrant := grant.NewGrant(resource, member.Permission, gr.Id)
-			rv = append(rv, membershipGrant)
+			grantOpt := grant.WithAnnotation(&v2.GrantExpandable{
+				EntitlementIds: []string{
+					fmt.Sprintf("group:%s:member", gr.Id.Resource),
+				},
+			})
+			permissionGrant := grant.NewGrant(resource, member.Permission, gr.Id, grantOpt)
+			rv = append(rv, permissionGrant)
 		}
 	case resourceTypeUser.Id:
-		usersPermissions, nextPageToken, err = p.client.ListUserProjectsPermissions(ctx, client.PageOptions{
-			PerPage: ITEMSPERPAGE,
-			Page:    pageToken,
-		}, projectKey)
-		if err != nil {
-			return nil, "", nil, err
-		}
-
-		err = bag.Next(nextPageToken)
+		usersPermissions, nextPageToken, err = p.client.GetUserProjectsPermissions(ctx, projectKey, pToken)
 		if err != nil {
 			return nil, "", nil, err
 		}
@@ -205,16 +170,10 @@ func (p *projectBuilder) Grants(ctx context.Context, resource *v2.Resource, pTok
 		return nil, "", nil, fmt.Errorf("bitbucket(dc)-connector: invalid grant resource type: %s", bag.ResourceTypeID())
 	}
 
-	nextPageToken, err = bag.Marshal()
-	if err != nil {
-		return nil, "", nil, err
-	}
-
 	return rv, nextPageToken, nil, nil
 }
 
 func (p *projectBuilder) Grant(ctx context.Context, principal *v2.Resource, entitlement *v2.Entitlement) (annotations.Annotations, error) {
-	var permission string
 	l := ctxzap.Extract(ctx)
 	if principal.Id.ResourceType != resourceTypeUser.Id && principal.Id.ResourceType != resourceTypeGroup.Id {
 		l.Warn(
@@ -225,16 +184,15 @@ func (p *projectBuilder) Grant(ctx context.Context, principal *v2.Resource, enti
 		return nil, fmt.Errorf("bitbucket(dc)-connector: only users or groups can be granted project membership")
 	}
 
-	_, permissions, err := ParseEntitlementID(entitlement.Id)
+	_, permission, err := ParseEntitlementID(entitlement.Id)
 	if err != nil {
 		return nil, err
 	}
 
-	switch permissions[len(permissions)-1] {
+	switch permission {
 	case roleProjectCreate, roleProjectWrite, roleProjectAdmin, roleProjectRead, roleRepoCreate:
-		permission = permissions[len(permissions)-1]
 	default:
-		return nil, fmt.Errorf("bitbucket(dc)-connector: invalid permission type: %s", permissions[len(permissions)-1])
+		return nil, fmt.Errorf("bitbucket(dc)-connector: invalid permission type: %s", permission)
 	}
 
 	projectKey := entitlement.Resource.Id.Resource
@@ -254,7 +212,7 @@ func (p *projectBuilder) Grant(ctx context.Context, principal *v2.Resource, enti
 		userPos := slices.IndexFunc(listUser, func(c client.UsersPermissions) bool {
 			return c.User.Name == principal.DisplayName && c.Permission == permission
 		})
-		if userPos != NF {
+		if userPos >= 0 {
 			l.Warn(
 				"bitbucket(dc)-connector: user already has this project permission",
 				zap.String("principal_id", principal.Id.String()),
@@ -283,7 +241,7 @@ func (p *projectBuilder) Grant(ctx context.Context, principal *v2.Resource, enti
 		groupPos := slices.IndexFunc(listGroup, func(c client.GroupsPermissions) bool {
 			return c.Group.Name == principal.DisplayName && c.Permission == permission
 		})
-		if groupPos != NF {
+		if groupPos >= 0 {
 			l.Warn(
 				"bitbucket(dc)-connector: group already has this project permission",
 				zap.String("principal_id", principal.Id.String()),
@@ -310,7 +268,6 @@ func (p *projectBuilder) Grant(ctx context.Context, principal *v2.Resource, enti
 }
 
 func (p *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.Annotations, error) {
-	var permission string
 	l := ctxzap.Extract(ctx)
 	principal := grant.Principal
 	entitlement := grant.Entitlement
@@ -326,16 +283,15 @@ func (p *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotatio
 		return nil, fmt.Errorf("bitbucket(bk)-connector: only users and groups can have project permissions revoked")
 	}
 
-	_, permissions, err := ParseEntitlementID(entitlement.Id)
+	_, permission, err := ParseEntitlementID(entitlement.Id)
 	if err != nil {
 		return nil, err
 	}
 
-	switch permissions[len(permissions)-1] {
+	switch permission {
 	case roleProjectCreate, roleProjectWrite, roleProjectAdmin, roleProjectRead, roleRepoCreate:
-		permission = permissions[len(permissions)-1]
 	default:
-		return nil, fmt.Errorf("bitbucket(dc)-connector: invalid permission type: %s", permissions[len(permissions)-1])
+		return nil, fmt.Errorf("bitbucket(dc)-connector: invalid permission type: %s", permission)
 	}
 
 	projectKey := entitlement.Resource.Id.Resource
@@ -356,7 +312,7 @@ func (p *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotatio
 		userPos := slices.IndexFunc(listUser, func(c client.UsersPermissions) bool {
 			return c.User.Name == userName && c.Permission == permission
 		})
-		if userPos == NF {
+		if userPos < 0 {
 			l.Warn(
 				"bitbucket(dc)-connector: user doesn't have this project permission",
 				zap.String("principal_id", principal.Id.String()),
@@ -385,7 +341,7 @@ func (p *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotatio
 		groupPos := slices.IndexFunc(listGroup, func(c client.GroupsPermissions) bool {
 			return c.Group.Name == groupName && c.Permission == permission
 		})
-		if groupPos == NF {
+		if groupPos < 0 {
 			l.Warn(
 				"bitbucket(dc)-connector: group doesn't have this project permission",
 				zap.String("principal_id", principal.Id.String()),

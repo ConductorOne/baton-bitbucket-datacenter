@@ -47,8 +47,8 @@ jobs:
       BATON_BITBUCKETDC_USERNAME: ${{ secrets.BATON_BITBUCKETDC_USERNAME }}
       BATON_BITBUCKETDC_PASSWORD: ${{ secrets.BATON_BITBUCKETDC_PASSWORD }}
       # The following parameters are passed to grant/revoke commands
-      CONNECTOR_GRANT: 'group:local-group:ADMIN:user:62'
-      CONNECTOR_ENTITLEMENT: 'group:local-group:ADMIN'
+      CONNECTOR_GRANT: 'group:local-group:member:user:62'
+      CONNECTOR_ENTITLEMENT: 'group:local-group:member'
       CONNECTOR_PRINCIPAL_TYPE: 'user'
       CONNECTOR_PRINCIPAL: '62'
     steps:
@@ -77,7 +77,7 @@ jobs:
       - name: Check for grant before revoking
         run: |
           ./baton-bitbucket-datacenter 
-          baton grants --entitlement="${{ env.CONNECTOR_ENTITLEMENT }}" --output-format=json | jq --exit-status ".grants[].principal.id.resource == \"${{ env.CONNECTOR_PRINCIPAL }}\""
+          baton grants --entitlement="${{ env.CONNECTOR_ENTITLEMENT }}" --output-format=json | jq --exit-status ".grants[] | select( .principal.id.resource == \"${{ env.CONNECTOR_PRINCIPAL }}\" )"
       - name: Revoke grants
         run: |
           ./baton-bitbucket-datacenter 
