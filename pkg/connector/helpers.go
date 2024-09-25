@@ -14,25 +14,9 @@ import (
 	"golang.org/x/text/language"
 )
 
-// splitFullName returns firstName and lastName.
-func splitFullName(name string) (string, string) {
-	names := strings.SplitN(name, " ", 2)
-	var firstName, lastName string
-
-	switch len(names) {
-	case 1:
-		firstName = names[0]
-	case 2:
-		firstName = names[0]
-		lastName = names[1]
-	}
-
-	return firstName, lastName
-}
-
 func userResource(ctx context.Context, user *client.User, parentResourceID *v2.ResourceId) (*v2.Resource, error) {
 	var userStatus v2.UserTrait_Status_Status = v2.UserTrait_Status_STATUS_ENABLED
-	firstName, lastName := splitFullName(user.Name)
+	firstName, lastName := rs.SplitFullName(user.Name)
 	profile := map[string]interface{}{
 		"login":      user.Slug,
 		"first_name": firstName,
@@ -137,32 +121,6 @@ func repositoryResource(ctx context.Context, repository *client.Repos, parentRes
 	}
 
 	return resource, nil
-}
-
-func ParsePageToken(i string, resourceID *v2.ResourceId) (*pagination.Bag, error) {
-	b := &pagination.Bag{}
-	err := b.Unmarshal(i)
-	if err != nil {
-		return nil, err
-	}
-
-	if b.Current() == nil {
-		b.Push(pagination.PageState{
-			ResourceTypeID: resourceID.ResourceType,
-			ResourceID:     resourceID.Resource,
-		})
-	}
-
-	return b, nil
-}
-
-func PString[T any](p *T) T {
-	if p == nil {
-		var v T
-		return v
-	}
-
-	return *p
 }
 
 // Create a new connector resource for an Bitbucket UserGroup.
