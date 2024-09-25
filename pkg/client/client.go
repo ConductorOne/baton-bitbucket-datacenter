@@ -70,6 +70,20 @@ type auth struct {
 	bearerToken    string
 }
 
+func parsePageData(start, nextPageStart, size int, isLastPage bool) Page {
+	var page Page
+	if isLastPage {
+		return page
+	}
+	sPage := strconv.Itoa(start)
+	nPage := strconv.Itoa(nextPageStart)
+	return Page{
+		PreviousPage: &sPage,
+		NextPage:     &nPage,
+		Count:        int64(size),
+	}
+}
+
 func (d *DataCenterClient) checkStatusUnauthorizedError(err error) error {
 	var bitbucketErr *BitbucketError
 	if err == nil {
@@ -298,17 +312,7 @@ func (d *DataCenterClient) GetUsers(ctx context.Context, startPage, limit string
 	}
 	defer resp.Body.Close()
 
-	var page Page
-	sPage := strconv.Itoa(userData.Start)
-	nPage := strconv.Itoa(userData.NextPageStart)
-	if !userData.IsLastPage {
-		page = Page{
-			PreviousPage: &sPage,
-			NextPage:     &nPage,
-			Count:        int64(userData.Size),
-		}
-	}
-
+	page := parsePageData(userData.Start, userData.NextPageStart, userData.Size, userData.IsLastPage)
 	return userData.Users, page, nil
 }
 
@@ -348,17 +352,7 @@ func (d *DataCenterClient) GetProjects(ctx context.Context, startPage, limit str
 	}
 	defer resp.Body.Close()
 
-	var page Page
-	sPage := strconv.Itoa(projectData.Start)
-	nPage := strconv.Itoa(projectData.NextPageStart)
-	if !projectData.IsLastPage {
-		page = Page{
-			PreviousPage: &sPage,
-			NextPage:     &nPage,
-			Count:        int64(projectData.Size),
-		}
-	}
-
+	page := parsePageData(projectData.Start, projectData.NextPageStart, projectData.Size, projectData.IsLastPage)
 	return projectData.Projects, page, nil
 }
 
@@ -395,17 +389,7 @@ func (d *DataCenterClient) GetRepos(ctx context.Context, startPage, limit string
 	}
 	defer resp.Body.Close()
 
-	var page Page
-	sPage := strconv.Itoa(repoData.Start)
-	nPage := strconv.Itoa(repoData.NextPageStart)
-	if !repoData.IsLastPage {
-		page = Page{
-			PreviousPage: &sPage,
-			NextPage:     &nPage,
-			Count:        int64(repoData.Size),
-		}
-	}
-
+	page := parsePageData(repoData.Start, repoData.NextPageStart, repoData.Size, repoData.IsLastPage)
 	return repoData.Repos, page, nil
 }
 
@@ -446,17 +430,7 @@ func (d *DataCenterClient) GetGroups(ctx context.Context, startPage, limit strin
 	}
 	defer resp.Body.Close()
 
-	var page Page
-	sPage := strconv.Itoa(groupData.Start)
-	nPage := strconv.Itoa(groupData.NextPageStart)
-	if !groupData.IsLastPage {
-		page = Page{
-			PreviousPage: &sPage,
-			NextPage:     &nPage,
-			Count:        int64(groupData.Size),
-		}
-	}
-
+	page := parsePageData(groupData.Start, groupData.NextPageStart, groupData.Size, groupData.IsLastPage)
 	return groupData.Groups, page, nil
 }
 
@@ -497,17 +471,7 @@ func (d *DataCenterClient) GetGroupMembers(ctx context.Context, startPage, limit
 	}
 	defer resp.Body.Close()
 
-	var page Page
-	sPage := strconv.Itoa(memberData.Start)
-	nPage := strconv.Itoa(memberData.NextPageStart)
-	if !memberData.IsLastPage {
-		page = Page{
-			PreviousPage: &sPage,
-			NextPage:     &nPage,
-			Count:        int64(memberData.Size),
-		}
-	}
-
+	page := parsePageData(memberData.Start, memberData.NextPageStart, memberData.Size, memberData.IsLastPage)
 	return memberData.Members, page, nil
 }
 
@@ -553,17 +517,7 @@ func (d *DataCenterClient) GetGlobalUserPermissions(ctx context.Context, startPa
 	}
 	defer resp.Body.Close()
 
-	var page Page
-	sPage := strconv.Itoa(permissionsData.Start)
-	nPage := strconv.Itoa(permissionsData.NextPageStart)
-	if !permissionsData.IsLastPage {
-		page = Page{
-			PreviousPage: &sPage,
-			NextPage:     &nPage,
-			Count:        int64(permissionsData.Size),
-		}
-	}
-
+	page := parsePageData(permissionsData.Start, permissionsData.NextPageStart, permissionsData.Size, permissionsData.IsLastPage)
 	return permissionsData.UsersPermissions, page, nil
 }
 
@@ -621,17 +575,7 @@ func (d *DataCenterClient) GetGlobalGroupPermissions(ctx context.Context, startP
 	}
 	defer resp.Body.Close()
 
-	var page Page
-	sPage := strconv.Itoa(permissionsData.Start)
-	nPage := strconv.Itoa(permissionsData.NextPageStart)
-	if !permissionsData.IsLastPage {
-		page = Page{
-			PreviousPage: &sPage,
-			NextPage:     &nPage,
-			Count:        int64(permissionsData.Size),
-		}
-	}
-
+	page := parsePageData(permissionsData.Start, permissionsData.NextPageStart, permissionsData.Size, permissionsData.IsLastPage)
 	return permissionsData.GroupsPermissions, page, nil
 }
 
@@ -730,17 +674,7 @@ func (d *DataCenterClient) GetUserRepositoryPermissions(ctx context.Context, sta
 	}
 	defer resp.Body.Close()
 
-	var page Page
-	sPage := strconv.Itoa(permissionsData.Start)
-	nPage := strconv.Itoa(permissionsData.NextPageStart)
-	if !permissionsData.IsLastPage {
-		page = Page{
-			PreviousPage: &sPage,
-			NextPage:     &nPage,
-			Count:        int64(permissionsData.Size),
-		}
-	}
-
+	page := parsePageData(permissionsData.Start, permissionsData.NextPageStart, permissionsData.Size, permissionsData.IsLastPage)
 	return permissionsData.UsersPermissions, page, nil
 }
 
@@ -787,17 +721,7 @@ func (d *DataCenterClient) GetUserProjectsPermissions(ctx context.Context, start
 	}
 	defer resp.Body.Close()
 
-	var page Page
-	sPage := strconv.Itoa(permissionsData.Start)
-	nPage := strconv.Itoa(permissionsData.NextPageStart)
-	if !permissionsData.IsLastPage {
-		page = Page{
-			PreviousPage: &sPage,
-			NextPage:     &nPage,
-			Count:        int64(permissionsData.Size),
-		}
-	}
-
+	page := parsePageData(permissionsData.Start, permissionsData.NextPageStart, permissionsData.Size, permissionsData.IsLastPage)
 	return permissionsData.UsersPermissions, page, nil
 }
 
@@ -825,17 +749,7 @@ func (d *DataCenterClient) GetGroupProjectsPermissions(ctx context.Context, star
 	}
 	defer resp.Body.Close()
 
-	var page Page
-	sPage := strconv.Itoa(permissionsData.Start)
-	nPage := strconv.Itoa(permissionsData.NextPageStart)
-	if !permissionsData.IsLastPage {
-		page = Page{
-			PreviousPage: &sPage,
-			NextPage:     &nPage,
-			Count:        int64(permissionsData.Size),
-		}
-	}
-
+	page := parsePageData(permissionsData.Start, permissionsData.NextPageStart, permissionsData.Size, permissionsData.IsLastPage)
 	return permissionsData.GroupsPermissions, page, nil
 }
 
@@ -900,17 +814,7 @@ func (d *DataCenterClient) GetGroupRepositoryPermissions(ctx context.Context, st
 	}
 	defer resp.Body.Close()
 
-	var page Page
-	sPage := strconv.Itoa(permissionsData.Start)
-	nPage := strconv.Itoa(permissionsData.NextPageStart)
-	if !permissionsData.IsLastPage {
-		page = Page{
-			PreviousPage: &sPage,
-			NextPage:     &nPage,
-			Count:        int64(permissionsData.Size),
-		}
-	}
-
+	page := parsePageData(permissionsData.Start, permissionsData.NextPageStart, permissionsData.Size, permissionsData.IsLastPage)
 	return permissionsData.GroupsPermissions, page, nil
 }
 
