@@ -25,9 +25,10 @@ func projectResource(_ context.Context, project *client.Projects, parentResource
 		"project_key":  project.Key,
 	}
 
+	displayName := fmt.Sprintf("%s (%s)", project.Key, project.Name)
 	groupTraitOptions := []rs.GroupTraitOption{rs.WithGroupProfile(profile)}
 	resource, err := rs.NewGroupResource(
-		project.Name,
+		displayName,
 		resourceTypeProject,
 		project.Key,
 		groupTraitOptions,
