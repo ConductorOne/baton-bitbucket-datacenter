@@ -388,9 +388,12 @@ func (d *DataCenterClient) GetGlobalUserPermissions(ctx context.Context, pToken 
 
 	var permissionsData GlobalPermissionsAPIData
 	resp, err := d.Do(ctx, http.MethodGet, uri, nil, &permissionsData)
-	// if bearer auth, squelch 403 and return empty list
-	err = d.checkStatusUnauthorizedError(err)
 	if err != nil {
+		// if bearer auth, squelch 403 and return empty list
+		err = d.checkStatusUnauthorizedError(err)
+		if err == nil {
+			return nil, "", nil
+		}
 		return nil, pToken.Token, err
 	}
 	defer resp.Body.Close()
@@ -441,9 +444,12 @@ func (d *DataCenterClient) GetGlobalGroupPermissions(ctx context.Context, pToken
 
 	var permissionsData GlobalGroupPermissionsAPIData
 	resp, err := d.Do(ctx, http.MethodGet, uri, nil, &permissionsData)
-	// if bearer auth, squelch 403 and return empty list
-	err = d.checkStatusUnauthorizedError(err)
 	if err != nil {
+		// if bearer auth, squelch 403 and return empty list
+		err = d.checkStatusUnauthorizedError(err)
+		if err == nil {
+			return nil, "", nil
+		}
 		return nil, pToken.Token, err
 	}
 	defer resp.Body.Close()
