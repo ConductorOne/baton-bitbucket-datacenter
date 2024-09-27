@@ -12,14 +12,27 @@ import (
 
 func userResource(_ context.Context, user *client.User, parentResourceID *v2.ResourceId) (*v2.Resource, error) {
 	var userStatus v2.UserTrait_Status_Status = v2.UserTrait_Status_STATUS_ENABLED
-	firstName, lastName := rs.SplitFullName(user.Name)
+	displayName := user.DisplayName
+	if displayName == "" {
+		displayName = user.Name
+	}
+	if displayName == "" {
+		displayName = user.Slug
+	}
+	if displayName == "" {
+		displayName = user.EmailAddress
+	}
+	firstName, lastName := rs.SplitFullName(displayName)
+
 	profile := map[string]interface{}{
-		"login":      user.Slug,
-		"first_name": firstName,
-		"last_name":  lastName,
-		"email":      user.EmailAddress,
-		"user_id":    user.ID,
-		"user_slug":  user.Slug,
+		"login":        user.Slug,
+		"first_name":   firstName,
+		"last_name":    lastName,
+		"email":        user.EmailAddress,
+		"user_id":      user.ID,
+		"user_slug":    user.Slug,
+		"display_name": user.DisplayName,
+		"user_type":    user.Type,
 	}
 
 	switch user.Active {
@@ -36,12 +49,11 @@ func userResource(_ context.Context, user *client.User, parentResourceID *v2.Res
 		rs.WithEmail(user.EmailAddress, true),
 	}
 
-	displayName := user.Name
-	if displayName == "" {
-		displayName = user.Slug
-	}
-	if displayName == "" {
-		displayName = user.EmailAddress
+	switch user.Type {
+	case "NORMAL":
+		userTraits = append(userTraits, rs.WithAccountType(v2.UserTrait_ACCOUNT_TYPE_HUMAN))
+	case "SERVICE":
+		userTraits = append(userTraits, rs.WithAccountType(v2.UserTrait_ACCOUNT_TYPE_SERVICE))
 	}
 
 	ret, err := rs.NewUserResource(
