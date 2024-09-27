@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"strconv"
 
 	"github.com/conductorone/baton-bitbucket-datacenter/pkg/client"
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
@@ -130,11 +129,7 @@ func (g *groupBuilder) Grant(ctx context.Context, principal *v2.Resource, entitl
 	groupName := entitlement.Resource.Id.Resource
 	switch principal.Id.ResourceType {
 	case resourceTypeUser.Id:
-		userName := principal.DisplayName
-		userId, err := strconv.Atoi(principal.Id.Resource)
-		if err != nil {
-			return nil, err
-		}
+		userName := principal.Id.Resource
 
 		// Check if user is already a member of the group
 		listGroups, err := listGroupMembers(ctx, g.client, groupName)
@@ -143,7 +138,7 @@ func (g *groupBuilder) Grant(ctx context.Context, principal *v2.Resource, entitl
 		}
 
 		groupPos := slices.IndexFunc(listGroups, func(c client.Members) bool {
-			return c.ID == userId
+			return c.Name == userName
 		})
 		if groupPos >= 0 {
 			l.Info(
@@ -161,7 +156,6 @@ func (g *groupBuilder) Grant(ctx context.Context, principal *v2.Resource, entitl
 		}
 
 		l.Info("Group membership granted.",
-			zap.Int64("UserID", int64(userId)),
 			zap.String("User", userName),
 			zap.String("Group", groupName),
 		)
@@ -194,11 +188,8 @@ func (g *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations
 	groupName := groupResourceId.Resource
 	switch principal.Id.ResourceType {
 	case resourceTypeUser.Id:
-		userName := principal.DisplayName
-		userId, err := strconv.Atoi(principal.Id.Resource)
-		if err != nil {
-			return nil, err
-		}
+		userName := principal.Id.Resource
+
 		// Check if user is member of the group
 		groupMembers, err := listGroupMembers(ctx, g.client, groupName)
 		if err != nil {
@@ -206,7 +197,7 @@ func (g *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations
 		}
 
 		groupPos := slices.IndexFunc(groupMembers, func(c client.Members) bool {
-			return c.ID == userId
+			return c.Name == userName
 		})
 		if groupPos < 0 {
 			l.Info(
@@ -224,7 +215,6 @@ func (g *groupBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations
 		}
 
 		l.Info("Group membership revoked.",
-			zap.Int64("UserID", int64(userId)),
 			zap.String("User", userName),
 			zap.String("Group", groupName),
 		)

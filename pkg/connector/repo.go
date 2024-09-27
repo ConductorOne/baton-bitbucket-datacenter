@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"strconv"
 
 	"github.com/conductorone/baton-bitbucket-datacenter/pkg/client"
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
@@ -179,7 +178,7 @@ func (r *repoBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken 
 func (r *repoBuilder) Grant(ctx context.Context, principal *v2.Resource, entitlement *v2.Entitlement) (annotations.Annotations, error) {
 	l := ctxzap.Extract(ctx)
 	if principal.Id.ResourceType != resourceTypeUser.Id && principal.Id.ResourceType != resourceTypeGroup.Id {
-		l.Warn(
+		l.Error(
 			"bitbucker(bk)-connector: only users or groups can be granted repo membership",
 			zap.String("principal_type", principal.Id.ResourceType),
 			zap.String("principal_id", principal.Id.Resource),
@@ -206,10 +205,6 @@ func (r *repoBuilder) Grant(ctx context.Context, principal *v2.Resource, entitle
 	switch principal.Id.ResourceType {
 	case resourceTypeUser.Id:
 		userName := principal.DisplayName
-		userId, err := strconv.Atoi(principal.Id.Resource)
-		if err != nil {
-			return nil, err
-		}
 
 		userRepositoryPermissions, err := listUserRepositoryPermissions(ctx, r.client, projectKey, repoSlug)
 		if err != nil {
@@ -217,15 +212,15 @@ func (r *repoBuilder) Grant(ctx context.Context, principal *v2.Resource, entitle
 		}
 
 		index := slices.IndexFunc(userRepositoryPermissions, func(c client.UsersPermissions) bool {
-			return c.User.ID == userId
+			return c.User.Name == userName
 		})
 		if index >= 0 {
-			l.Warn(
+			l.Info(
 				"bitbucket(dc)-connector: user already has this repository permission",
 				zap.String("principal_id", principal.Id.String()),
 				zap.String("principal_type", principal.Id.ResourceType),
 			)
-			return nil, fmt.Errorf("bitbucket(dc)-connector: user %s already has this repository permission", userName)
+			return annotations.New(&v2.GrantAlreadyExists{}), nil
 		}
 
 		err = r.client.UpdateUserRepositoryPermission(ctx,
@@ -238,8 +233,7 @@ func (r *repoBuilder) Grant(ctx context.Context, principal *v2.Resource, entitle
 			return nil, err
 		}
 
-		l.Warn("User Membership has been created.",
-			zap.Int64("UserID", int64(userId)),
+		l.Info("User Membership has been created.",
 			zap.String("UserName", userName),
 			zap.String("ProjectKey", projectKey),
 			zap.String("RepositorySlug", repoSlug),
@@ -255,12 +249,12 @@ func (r *repoBuilder) Grant(ctx context.Context, principal *v2.Resource, entitle
 			return c.Group.Name == groupName
 		})
 		if groupsPermissionsPos >= 0 {
-			l.Warn(
+			l.Info(
 				"bitbucket(dc)-connector: group already has this repository permission",
 				zap.String("principal_id", principal.Id.String()),
 				zap.String("principal_type", principal.Id.ResourceType),
 			)
-			return nil, fmt.Errorf("bitbucket(dc)-connector: group %s already has this repository permission", groupName)
+			return annotations.New(&v2.GrantAlreadyExists{}), nil
 		}
 
 		err = r.client.UpdateGroupRepositoryPermission(ctx,
@@ -273,7 +267,7 @@ func (r *repoBuilder) Grant(ctx context.Context, principal *v2.Resource, entitle
 			return nil, err
 		}
 
-		l.Warn("Group Membership has been created.",
+		l.Info("Group Membership has been created.",
 			zap.String("GroupName", groupName),
 			zap.String("ProjectKey", projectKey),
 			zap.String("RepositorySlug", repoSlug),
@@ -292,7 +286,7 @@ func (r *repoBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.
 	principalIsUser := principal.Id.ResourceType == resourceTypeUser.Id
 	principalIsGroup := principal.Id.ResourceType == resourceTypeGroup.Id
 	if !principalIsUser && !principalIsGroup {
-		l.Warn(
+		l.Error(
 			"bitbucket(bk)-connector: only users and groups can have repository permissions revoked",
 			zap.String("principal_id", principal.Id.Resource),
 			zap.String("principal_type", principal.Id.ResourceType),
@@ -313,26 +307,21 @@ func (r *repoBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.
 
 	switch principal.Id.ResourceType {
 	case resourceTypeUser.Id:
-		userId, err := strconv.Atoi(principal.Id.Resource)
-		if err != nil {
-			return nil, err
-		}
-
 		listUsers, err := listUserRepositoryPermissions(ctx, r.client, projectKey, repoSlug)
 		if err != nil {
 			return nil, err
 		}
 
 		index := slices.IndexFunc(listUsers, func(c client.UsersPermissions) bool {
-			return c.User.ID == userId
+			return c.User.Name == principal.Id.Resource
 		})
 		if index < 0 {
-			l.Warn(
+			l.Info(
 				"bitbucket(dc)-connector: user doesnt have this repository permission",
 				zap.String("principal_id", principal.Id.String()),
 				zap.String("principal_type", principal.Id.ResourceType),
 			)
-			return nil, fmt.Errorf("bitbucket(dc)-connector: user %s doesnt have this repository permission", principal.DisplayName)
+			return annotations.New(&v2.GrantAlreadyRevoked{}), nil
 		}
 
 		err = r.client.RevokeUserRepositoryPermission(ctx, projectKey, repoSlug, principal.DisplayName)
@@ -340,8 +329,7 @@ func (r *repoBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.
 			return nil, fmt.Errorf("bitbucket(dc)-connector: failed to remove repository user permission: %w", err)
 		}
 
-		l.Warn("User Membership has been revoked.",
-			zap.Int64("UserID", int64(userId)),
+		l.Info("User Membership has been revoked.",
 			zap.String("UserName", principal.DisplayName),
 			zap.String("ProjectKey", projectKey),
 			zap.String("RepositorySlug", repoSlug),
@@ -356,12 +344,12 @@ func (r *repoBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.
 			return c.Group.Name == principal.DisplayName
 		})
 		if index < 0 {
-			l.Warn(
+			l.Info(
 				"bitbucket(dc)-connector: group doesnt have this repository permission",
 				zap.String("principal_id", principal.Id.String()),
 				zap.String("principal_type", principal.Id.ResourceType),
 			)
-			return nil, fmt.Errorf("bitbucket(dc)-connector: group %s doesnt have this repository permission", principal.DisplayName)
+			return annotations.New(&v2.GrantAlreadyRevoked{}), nil
 		}
 
 		err = r.client.RevokeGroupRepositoryPermission(ctx, projectKey, repoSlug, principal.DisplayName)
@@ -369,7 +357,7 @@ func (r *repoBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.
 			return nil, fmt.Errorf("bitbucket(dc)-connector: failed to remove repository group permission: %w", err)
 		}
 
-		l.Warn("Group Membership has been revoked.",
+		l.Info("Group Membership has been revoked.",
 			zap.String("GroupName", principal.DisplayName),
 			zap.String("ProjectKey", projectKey),
 			zap.String("RepositorySlug", repoSlug),

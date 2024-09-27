@@ -47,10 +47,10 @@ jobs:
       BATON_BITBUCKETDC_USERNAME: ${{ secrets.BATON_BITBUCKETDC_USERNAME }}
       BATON_BITBUCKETDC_PASSWORD: ${{ secrets.BATON_BITBUCKETDC_PASSWORD }}
       # The following parameters are passed to grant/revoke commands
-      CONNECTOR_GRANT: 'group:local-group:member:user:62'
+      CONNECTOR_GRANT: 'group:local-group:member:user:f1'
       CONNECTOR_ENTITLEMENT: 'group:local-group:member'
       CONNECTOR_PRINCIPAL_TYPE: 'user'
-      CONNECTOR_PRINCIPAL: '62'
+      CONNECTOR_PRINCIPAL: 'f1'
     steps:
       - name: Install Go
         uses: actions/setup-go@v4

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/conductorone/baton-bitbucket-datacenter/pkg/client"
@@ -202,18 +201,14 @@ func (o *orgBuilder) Grant(ctx context.Context, principal *v2.Resource, entitlem
 
 	switch principal.Id.ResourceType {
 	case resourceTypeUser.Id:
-		userName := principal.DisplayName
-		userId, err := strconv.Atoi(principal.Id.Resource)
-		if err != nil {
-			return nil, err
-		}
+		userName := principal.Id.Resource
 
 		globalUserPermissions, err := listGlobalUserPermissions(ctx, o.client)
 		if err != nil {
 			return nil, err
 		}
 		idx := slices.IndexFunc(globalUserPermissions, func(c client.UsersPermissions) bool {
-			return c.User.ID == userId
+			return c.User.Name == userName
 		})
 		if idx > -1 {
 			userPermission := globalUserPermissions[idx]
@@ -228,7 +223,6 @@ func (o *orgBuilder) Grant(ctx context.Context, principal *v2.Resource, entitlem
 		}
 
 		l.Info("User global permission granted.",
-			zap.Int64("UserID", int64(userId)),
 			zap.String("User", userName),
 			zap.String("Permission", permission),
 		)
@@ -294,17 +288,14 @@ func (o *orgBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.A
 
 	switch principal.Id.ResourceType {
 	case resourceTypeUser.Id:
-		userName := principal.DisplayName
-		userId, err := strconv.Atoi(principal.Id.Resource)
-		if err != nil {
-			return nil, err
-		}
+		userName := principal.Id.Resource
+
 		globalUserPermissions, err := listGlobalUserPermissions(ctx, o.client)
 		if err != nil {
 			return nil, err
 		}
 		idx := slices.IndexFunc(globalUserPermissions, func(c client.UsersPermissions) bool {
-			return c.User.ID == userId
+			return c.User.Name == userName
 		})
 		if idx == -1 {
 			return annotations.New(&v2.GrantAlreadyRevoked{}), nil
@@ -326,7 +317,6 @@ func (o *orgBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.A
 		}
 
 		l.Info("User global permission revoked.",
-			zap.Int64("UserID", int64(userId)),
 			zap.String("User", userName),
 			zap.String("Permission", permission),
 		)
