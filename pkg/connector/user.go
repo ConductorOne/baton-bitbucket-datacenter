@@ -17,9 +17,6 @@ func userResource(_ context.Context, user *client.User, parentResourceID *v2.Res
 		displayName = user.Name
 	}
 	if displayName == "" {
-		displayName = user.Slug
-	}
-	if displayName == "" {
 		displayName = user.EmailAddress
 	}
 	firstName, lastName := rs.SplitFullName(displayName)
@@ -45,7 +42,7 @@ func userResource(_ context.Context, user *client.User, parentResourceID *v2.Res
 	userTraits := []rs.UserTraitOption{
 		rs.WithUserProfile(profile),
 		rs.WithStatus(userStatus),
-		rs.WithUserLogin(user.Slug),
+		rs.WithUserLogin(user.Name),
 		rs.WithEmail(user.EmailAddress, true),
 	}
 
@@ -59,7 +56,7 @@ func userResource(_ context.Context, user *client.User, parentResourceID *v2.Res
 	ret, err := rs.NewUserResource(
 		displayName,
 		resourceTypeUser,
-		user.ID,
+		user.Name,
 		userTraits,
 		rs.WithParentResourceID(parentResourceID))
 	if err != nil {
