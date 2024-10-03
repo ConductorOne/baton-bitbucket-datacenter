@@ -16,7 +16,7 @@ import (
 )
 
 type DataCenterClient struct {
-	auth       *auth
+	auth       *Auth
 	httpClient *uhttp.BaseHttpClient
 	baseUrl    string
 }
@@ -65,9 +65,9 @@ const (
 	removeUserFromGroupEndpoint           = "rest/api/latest/admin/users/remove-group"
 )
 
-type auth struct {
-	user, password string
-	bearerToken    string
+type Auth struct {
+	Username, Password string
+	BearerToken        string
 }
 
 func (d *DataCenterClient) checkStatusUnauthorizedError(err error) error {
@@ -76,7 +76,7 @@ func (d *DataCenterClient) checkStatusUnauthorizedError(err error) error {
 		return nil
 	}
 
-	if d.auth.user != "" && d.auth.password != "" {
+	if d.auth.Username != "" && d.auth.Password != "" {
 		// Only squelch permission errors if using bearer token auth
 		return err
 	}
@@ -91,73 +91,14 @@ func (d *DataCenterClient) checkStatusUnauthorizedError(err error) error {
 	return err
 }
 
-func NewClient() *DataCenterClient {
-	return &DataCenterClient{
-		httpClient: &uhttp.BaseHttpClient{},
-		baseUrl:    "http://localhost:7990",
-		auth: &auth{
-			user:        "",
-			password:    "",
-			bearerToken: "",
-		},
-	}
-}
-
-func (d *DataCenterClient) WithUser(bitbucketUsername string) *DataCenterClient {
-	d.auth.user = bitbucketUsername
-	return d
-}
-
-func (d *DataCenterClient) WithPassword(bitbucketPassword string) *DataCenterClient {
-	d.auth.password = bitbucketPassword
-	return d
-}
-
-func (d *DataCenterClient) WithBearerToken(bitbucketToken string) *DataCenterClient {
-	d.auth.bearerToken = bitbucketToken
-	return d
-}
-
 func (d *DataCenterClient) WithAuthorization() uhttp.RequestOption {
 	// Prefer basic auth to bearer token, since bearer token auth can't get global user/group permissions
-	if d.auth.user != "" && d.auth.password != "" {
-		encodedAuth := base64.StdEncoding.EncodeToString([]byte(d.auth.user + ":" + d.auth.password))
+	if d.auth.Username != "" && d.auth.Password != "" {
+		encodedAuth := base64.StdEncoding.EncodeToString([]byte(d.auth.Username + ":" + d.auth.Password))
 		return uhttp.WithHeader("Authorization", "Basic "+encodedAuth)
 	}
 
-	return uhttp.WithHeader("Authorization", "Bearer "+d.auth.bearerToken)
-}
-
-func (d *DataCenterClient) getToken() string {
-	return d.auth.bearerToken
-}
-
-func (d *DataCenterClient) getUser() string {
-	return d.auth.user
-}
-
-func (d *DataCenterClient) getPWD() string {
-	return d.auth.password
-}
-
-func (d *DataCenterClient) CheckCredentials() bool {
-	if d.IsBasicAuthentication() || d.getToken() != "" {
-		return true
-	}
-
-	return false
-}
-
-func (d *DataCenterClient) IsBasicAuthentication() bool {
-	if d.getUser() != "" && d.getPWD() != "" {
-		return true
-	}
-
-	return false
-}
-
-func (d *DataCenterClient) IsTokenAuthentication() bool {
-	return d.getPWD() != ""
+	return uhttp.WithHeader("Authorization", "Bearer "+d.auth.BearerToken)
 }
 
 func isValidUrl(baseUrl string) bool {
@@ -165,12 +106,7 @@ func isValidUrl(baseUrl string) bool {
 	return err == nil && u.Scheme != "" && u.Host != ""
 }
 
-func New(ctx context.Context, baseUrl string, bitbucketClient *DataCenterClient) (*DataCenterClient, error) {
-	var (
-		clientId     = bitbucketClient.getUser()
-		clientSecret = bitbucketClient.getPWD()
-		clientToken  = bitbucketClient.getToken()
-	)
+func New(ctx context.Context, baseUrl string, auth *Auth) (*DataCenterClient, error) {
 	httpClient, err := uhttp.NewClient(ctx,
 		uhttp.WithLogger(true, ctxzap.Extract(ctx)),
 	)
@@ -190,11 +126,7 @@ func New(ctx context.Context, baseUrl string, bitbucketClient *DataCenterClient)
 	dc := DataCenterClient{
 		httpClient: cli,
 		baseUrl:    baseUrl,
-		auth: &auth{
-			user:        clientId,
-			password:    clientSecret,
-			bearerToken: clientToken,
-		},
+		auth:       auth,
 	}
 
 	return &dc, nil

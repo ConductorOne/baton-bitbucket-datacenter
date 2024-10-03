@@ -46,17 +46,15 @@ func (c *Connector) Metadata(ctx context.Context) (*v2.ConnectorMetadata, error)
 // Validate is called to ensure that the connector is properly configured. It should exercise any API credentials
 // to be sure that they are valid.
 func (c *Connector) Validate(ctx context.Context) (annotations.Annotations, error) {
-	return nil, nil
+	_, _, err := c.client.GetProjects(ctx, nil)
+	return nil, err
 }
 
 // New returns a new instance of the connector.
-func New(ctx context.Context, baseUrl string, bitbucketClient *client.DataCenterClient, skipRepos bool) (*Connector, error) {
-	var err error
-	if bitbucketClient.CheckCredentials() {
-		bitbucketClient, err = client.New(ctx, baseUrl, bitbucketClient)
-		if err != nil {
-			return nil, err
-		}
+func New(ctx context.Context, baseUrl string, auth *client.Auth, skipRepos bool) (*Connector, error) {
+	bitbucketClient, err := client.New(ctx, baseUrl, auth)
+	if err != nil {
+		return nil, err
 	}
 
 	return &Connector{

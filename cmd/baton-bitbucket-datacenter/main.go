@@ -57,17 +57,13 @@ func getConnector(ctx context.Context, v *viper.Viper) (types.ConnectorServer, e
 		return nil, fmt.Errorf("bitbucketdc-token, and (bitbucketdc-username/bitbucketdc-password) cannot be provided simultaneously")
 	}
 
-	bitbucketClient := client.NewClient()
-
-	if bitbucketToken != "" {
-		bitbucketClient.WithBearerToken(bitbucketToken)
+	auth := client.Auth{
+		Username:    bitbucketUsername,
+		Password:    bitbucketPassword,
+		BearerToken: bitbucketToken,
 	}
 
-	if bitbucketUsername != "" && bitbucketPassword != "" {
-		bitbucketClient.WithUser(bitbucketUsername).WithPassword(bitbucketPassword)
-	}
-
-	cb, err := connector.New(ctx, bitbucketBaseUrl, bitbucketClient, v.GetBool(SkipRepos.FieldName))
+	cb, err := connector.New(ctx, bitbucketBaseUrl, &auth, v.GetBool(SkipRepos.FieldName))
 	if err != nil {
 		l.Error("error creating connector", zap.Error(err))
 		return nil, err
