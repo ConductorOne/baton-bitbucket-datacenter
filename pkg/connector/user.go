@@ -69,6 +69,7 @@ func userResource(_ context.Context, user *client.User, parentResourceID *v2.Res
 type userBuilder struct {
 	resourceType *v2.ResourceType
 	client       *client.DataCenterClient
+	userGroups   []string
 }
 
 func (u *userBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
@@ -79,6 +80,19 @@ func (u *userBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
 // Users include a UserTrait because they are the 'shape' of a standard user.
 func (u *userBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId, pToken *pagination.Token) ([]*v2.Resource, string, annotations.Annotations, error) {
 	var rv []*v2.Resource
+
+	defaultPageState := []pagination.PageState{}
+	for _, group := range u.userGroups {
+		defaultPageState = append(defaultPageState, pagination.PageState{
+			ResourceTypeID: resourceTypeGroup.Id,
+			ResourceID:     group,
+		})
+	}
+
+	pToken, _, err := parseToken(pToken, defaultPageState)
+	if err != nil {
+		return nil, "", nil, err
+	}
 
 	users, nextPageToken, err := u.client.GetUsers(ctx, pToken)
 	if err != nil {
@@ -107,9 +121,10 @@ func (u *userBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken 
 	return nil, "", nil, nil
 }
 
-func newUserBuilder(c *client.DataCenterClient) *userBuilder {
+func newUserBuilder(c *client.DataCenterClient, userGroups []string) *userBuilder {
 	return &userBuilder{
 		resourceType: resourceTypeUser,
 		client:       c,
+		userGroups:   userGroups,
 	}
 }

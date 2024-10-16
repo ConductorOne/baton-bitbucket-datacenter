@@ -11,14 +11,15 @@ import (
 )
 
 type Connector struct {
-	client    *client.DataCenterClient
-	skipRepos bool
+	client     *client.DataCenterClient
+	skipRepos  bool
+	userGroups []string
 }
 
 // ResourceSyncers returns a ResourceSyncer for each resource type that should be synced from the upstream service.
 func (c *Connector) ResourceSyncers(ctx context.Context) []connectorbuilder.ResourceSyncer {
 	resourceSyncers := []connectorbuilder.ResourceSyncer{
-		newUserBuilder(c.client),
+		newUserBuilder(c.client, c.userGroups),
 		newProjectBuilder(c.client),
 		newGroupBuilder(c.client),
 		newOrgBuilder(c.client),
@@ -51,14 +52,15 @@ func (c *Connector) Validate(ctx context.Context) (annotations.Annotations, erro
 }
 
 // New returns a new instance of the connector.
-func New(ctx context.Context, baseUrl string, auth *client.Auth, skipRepos bool) (*Connector, error) {
+func New(ctx context.Context, baseUrl string, auth *client.Auth, skipRepos bool, userGroups []string) (*Connector, error) {
 	bitbucketClient, err := client.New(ctx, baseUrl, auth)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Connector{
-		client:    bitbucketClient,
-		skipRepos: skipRepos,
+		client:     bitbucketClient,
+		skipRepos:  skipRepos,
+		userGroups: userGroups,
 	}, nil
 }

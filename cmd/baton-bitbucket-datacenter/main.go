@@ -63,7 +63,7 @@ func getConnector(ctx context.Context, v *viper.Viper) (types.ConnectorServer, e
 		BearerToken: bitbucketToken,
 	}
 
-	cb, err := connector.New(ctx, bitbucketBaseUrl, &auth, v.GetBool(SkipRepos.FieldName))
+	cb, err := connector.New(ctx, bitbucketBaseUrl, &auth, v.GetBool(SkipRepos.FieldName), v.GetStringSlice(BitbucketLicensedUserGroups.FieldName))
 	if err != nil {
 		l.Error("error creating connector", zap.Error(err))
 		return nil, err

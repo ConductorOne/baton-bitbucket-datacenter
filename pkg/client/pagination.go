@@ -25,6 +25,10 @@ func pageTokenToQueryParams(pToken *pagination.Token) map[string]string {
 		return queryParams
 	}
 
+	if bag.ResourceTypeID() == "group" {
+		queryParams["group"] = bag.ResourceID()
+	}
+
 	if bag.PageToken() != "" {
 		queryParams["start"] = bag.PageToken()
 	}
