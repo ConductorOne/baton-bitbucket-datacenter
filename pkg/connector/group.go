@@ -103,7 +103,7 @@ func (g *groupBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken
 			ID:           usrCppy.ID,
 			Slug:         usrCppy.Slug,
 			Type:         usrCppy.Type,
-		}, resource.Id)
+		}, resource.Id, nil)
 		if err != nil {
 			return nil, "", nil, fmt.Errorf("error creating user resource for group %s: %w", groupName, err)
 		}

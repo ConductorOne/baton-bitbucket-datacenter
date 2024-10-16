@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 
 	"github.com/conductorone/baton-sdk/pkg/pagination"
 	"github.com/conductorone/baton-sdk/pkg/uhttp"
@@ -225,6 +226,40 @@ func (d *DataCenterClient) GetUsers(ctx context.Context, pToken *pagination.Toke
 
 	nextPageToken, err := getNextPageToken(pToken, userData.NextPageStart, userData.IsLastPage)
 	return userData.Users, nextPageToken, err
+}
+
+func (d *DataCenterClient) GetGroupUsers(ctx context.Context, group string) ([]User, error) {
+	var users []User
+	var err error
+	start := 0
+
+	for {
+		queryParams := map[string]string{
+			"start": strconv.Itoa(start),
+			"limit": strconv.Itoa(ITEMSPERPAGE),
+			"group": group,
+		}
+
+		uri, err := d.MakeURL(ctx, allUsersEndpoint, queryParams)
+		if err != nil {
+			return nil, err
+		}
+
+		var userData UsersAPIData
+		resp, err := d.Do(ctx, http.MethodGet, uri, nil, &userData)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+		users = append(users, userData.Users...)
+
+		start = userData.NextPageStart
+		if userData.IsLastPage {
+			break
+		}
+	}
+
+	return users, err
 }
 
 // Get projects. Only projects for which the authenticated user has the PROJECT_VIEW permission will be returned.

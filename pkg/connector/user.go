@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"slices"
 
 	"github.com/conductorone/baton-bitbucket-datacenter/pkg/client"
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
@@ -10,8 +11,7 @@ import (
 	rs "github.com/conductorone/baton-sdk/pkg/types/resource"
 )
 
-func userResource(_ context.Context, user *client.User, parentResourceID *v2.ResourceId) (*v2.Resource, error) {
-	var userStatus v2.UserTrait_Status_Status = v2.UserTrait_Status_STATUS_ENABLED
+func userResource(_ context.Context, user *client.User, parentResourceID *v2.ResourceId, opts []rs.UserTraitOption) (*v2.Resource, error) {
 	displayName := user.DisplayName
 	if displayName == "" {
 		displayName = user.Name
@@ -32,6 +32,7 @@ func userResource(_ context.Context, user *client.User, parentResourceID *v2.Res
 		"user_type":    user.Type,
 	}
 
+	var userStatus v2.UserTrait_Status_Status = v2.UserTrait_Status_STATUS_ENABLED
 	switch user.Active {
 	case true:
 		userStatus = v2.UserTrait_Status_STATUS_ENABLED
@@ -45,6 +46,8 @@ func userResource(_ context.Context, user *client.User, parentResourceID *v2.Res
 		rs.WithUserLogin(user.Name),
 		rs.WithEmail(user.EmailAddress, true),
 	}
+
+	userTraits = append(userTraits, opts...)
 
 	switch user.Type {
 	case "NORMAL":
@@ -67,9 +70,10 @@ func userResource(_ context.Context, user *client.User, parentResourceID *v2.Res
 }
 
 type userBuilder struct {
-	resourceType *v2.ResourceType
-	client       *client.DataCenterClient
-	userGroups   []string
+	resourceType    *v2.ResourceType
+	client          *client.DataCenterClient
+	userGroupFilter []string
+	groupUsers      []client.User
 }
 
 func (u *userBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
@@ -81,17 +85,14 @@ func (u *userBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
 func (u *userBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId, pToken *pagination.Token) ([]*v2.Resource, string, annotations.Annotations, error) {
 	var rv []*v2.Resource
 
-	defaultPageState := []pagination.PageState{}
-	for _, group := range u.userGroups {
-		defaultPageState = append(defaultPageState, pagination.PageState{
-			ResourceTypeID: resourceTypeGroup.Id,
-			ResourceID:     group,
-		})
-	}
-
-	pToken, _, err := parseToken(pToken, defaultPageState)
-	if err != nil {
-		return nil, "", nil, err
+	if pToken == nil || pToken.Token == "" {
+		for _, group := range u.userGroupFilter {
+			users, err := u.client.GetGroupUsers(ctx, group)
+			if err != nil {
+				return nil, "", nil, err
+			}
+			u.groupUsers = append(u.groupUsers, users...)
+		}
 	}
 
 	users, nextPageToken, err := u.client.GetUsers(ctx, pToken)
@@ -101,7 +102,16 @@ func (u *userBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId,
 
 	for _, usr := range users {
 		usrCopy := usr
-		ur, err := userResource(ctx, &usrCopy, parentResourceID)
+		opts := []rs.UserTraitOption{}
+
+		// TODO: This should be a set or map for better performance.
+		if len(u.userGroupFilter) > 0 && !slices.ContainsFunc(u.groupUsers, func(u client.User) bool {
+			return u.ID == usr.ID
+		}) {
+			opts = append(opts, rs.WithDetailedStatus(v2.UserTrait_Status_STATUS_DISABLED, "No Bitbucket license"))
+		}
+
+		ur, err := userResource(ctx, &usrCopy, parentResourceID, opts)
 		if err != nil {
 			return nil, "", nil, err
 		}
@@ -123,8 +133,8 @@ func (u *userBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken 
 
 func newUserBuilder(c *client.DataCenterClient, userGroups []string) *userBuilder {
 	return &userBuilder{
-		resourceType: resourceTypeUser,
-		client:       c,
-		userGroups:   userGroups,
+		resourceType:    resourceTypeUser,
+		client:          c,
+		userGroupFilter: userGroups,
 	}
 }
