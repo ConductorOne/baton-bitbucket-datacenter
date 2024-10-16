@@ -250,7 +250,10 @@ func (d *DataCenterClient) GetGroupUsers(ctx context.Context, group string) ([]U
 		if err != nil {
 			return nil, err
 		}
-		defer resp.Body.Close()
+		err = resp.Body.Close()
+		if err != nil {
+			return nil, err
+		}
 		users = append(users, userData.Users...)
 
 		start = userData.NextPageStart
