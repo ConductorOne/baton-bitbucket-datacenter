@@ -27,6 +27,10 @@ var (
 		"skip-repos",
 		field.WithDescription("Skip repositories"),
 	)
+	BitbucketLicensedUserGroups = field.StringSliceField(
+		"bitbucketdc-licensed-user-groups",
+		field.WithDescription("List of groups that are considered licensed users in Bitbucket Data Center"),
+	)
 )
 
 var fields = []field.SchemaField{
@@ -35,6 +39,7 @@ var fields = []field.SchemaField{
 	BitbucketBaseUrl,
 	BitbucketToken,
 	SkipRepos,
+	BitbucketLicensedUserGroups,
 }
 
 var constraints = []field.SchemaFieldRelationship{
