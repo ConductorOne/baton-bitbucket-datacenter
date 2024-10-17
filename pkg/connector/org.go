@@ -135,7 +135,7 @@ func (o *orgBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken *
 				DisplayName: userPermission.User.DisplayName,
 				ID:          userPermission.User.ID,
 				Type:        userPermission.User.Type,
-			}, resource.Id)
+			}, resource.Id, nil)
 			if err != nil {
 				return nil, "", nil, fmt.Errorf("error creating user resource for bitbucket org: %w", err)
 			}
