@@ -69,19 +69,22 @@ Available Commands:
   help               Help about any command
 
 Flags:
-      --bitbucketdc-baseurl string    Bitbucket Data Center server. example http://localhost:7990. defaultValue: http://localhost:7990 ($BATON_BITBUCKETDC_BASEURL)
-      --bitbucketdc-password string   Application password used to connect to the BitBucket(dc) API. ($BATON_BITBUCKETDC_PASSWORD)
-      --bitbucketdc-token string      HTTP access tokens in Bitbucket Data Center. ($BATON_BITBUCKETDC_TOKEN)
-      --bitbucketdc-username string   Username of administrator used to connect to the BitBucket(dc) API. ($BATON_BITBUCKETDC_USERNAME)
-      --client-id string              The client ID used to authenticate with ConductorOne ($BATON_CLIENT_ID)
-      --client-secret string          The client secret used to authenticate with ConductorOne ($BATON_CLIENT_SECRET)
-  -f, --file string                   The path to the c1z file to sync with ($BATON_FILE) (default "sync.c1z")
-  -h, --help                          help for baton-bitbucket-datacenter
-      --log-format string             The output format for logs: json, console ($BATON_LOG_FORMAT) (default "json")
-      --log-level string              The log level: debug, info, warn, error ($BATON_LOG_LEVEL) (default "info")
-  -p, --provisioning                  This must be set in order for provisioning actions to be enabled. ($BATON_PROVISIONING)
-      --ticketing                     This must be set to enable ticketing support ($BATON_TICKETING)
-  -v, --version                       version for baton-bitbucket-datacenter
+      --bitbucketdc-baseurl string                 required: Bitbucket Data Center server. example http://localhost:7990. ($BATON_BITBUCKETDC_BASEURL) (default "http://localhost:7990")
+      --bitbucketdc-licensed-user-groups strings   List of groups that are considered licensed users in Bitbucket Data Center ($BATON_BITBUCKETDC_LICENSED_USER_GROUPS)
+      --bitbucketdc-password string                Application password used to connect to the BitBucketDC API. ($BATON_BITBUCKETDC_PASSWORD)
+      --bitbucketdc-token string                   HTTP access tokens in Bitbucket Data Center ($BATON_BITBUCKETDC_TOKEN)
+      --bitbucketdc-username string                Username of administrator used to connect to the BitBucketDC API. ($BATON_BITBUCKETDC_USERNAME)
+      --client-id string                           The client ID used to authenticate with ConductorOne ($BATON_CLIENT_ID)
+      --client-secret string                       The client secret used to authenticate with ConductorOne ($BATON_CLIENT_SECRET)
+  -f, --file string                                The path to the c1z file to sync with ($BATON_FILE) (default "sync.c1z")
+  -h, --help                                       help for baton-bitbucket-datacenter
+      --log-format string                          The output format for logs: json, console ($BATON_LOG_FORMAT) (default "json")
+      --log-level string                           The log level: debug, info, warn, error ($BATON_LOG_LEVEL) (default "info")
+  -p, --provisioning                               This must be set in order for provisioning actions to be enabled ($BATON_PROVISIONING)
+      --skip-full-sync                             This must be set to skip a full sync ($BATON_SKIP_FULL_SYNC)
+      --skip-repos                                 Skip repositories ($BATON_SKIP_REPOS)
+      --ticketing                                  This must be set to enable ticketing support ($BATON_TICKETING)
+  -v, --version                                    version for baton-bitbucket-datacenter
 
 Use "baton-bitbucket-datacenter [command] --help" for more information about a command.
 ```
