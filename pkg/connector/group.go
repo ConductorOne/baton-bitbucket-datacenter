@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/conductorone/baton-bitbucket-datacenter/pkg/client"
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
@@ -21,6 +22,7 @@ func groupResource(_ context.Context, groupName string, parentResourceId *v2.Res
 	if groupName == "" {
 		return nil, fmt.Errorf("bitbucket(dc)-connector: group name is empty")
 	}
+	groupId := strings.ToLower(groupName)
 	resourceOptions := []rs.ResourceOption{}
 	if parentResourceId != nil {
 		resourceOptions = append(resourceOptions, rs.WithParentResourceID(parentResourceId))
@@ -28,7 +30,7 @@ func groupResource(_ context.Context, groupName string, parentResourceId *v2.Res
 	resource, err := rs.NewGroupResource(
 		groupName,
 		resourceTypeGroup,
-		groupName,
+		groupId,
 		nil,
 		resourceOptions...,
 	)
