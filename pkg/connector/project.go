@@ -47,13 +47,12 @@ type projectBuilder struct {
 }
 
 const (
-	roleProjectRead   = "PROJECT_READ"
-	roleProjectWrite  = "PROJECT_WRITE"
-	roleProjectCreate = "PROJECT_CREATE"
-	roleProjectAdmin  = "PROJECT_ADMIN"
+	roleProjectRead  = "PROJECT_READ"
+	roleProjectWrite = "PROJECT_WRITE"
+	roleProjectAdmin = "PROJECT_ADMIN"
 )
 
-var projectPermissions = []string{roleProjectRead, roleProjectWrite, roleProjectCreate, roleProjectAdmin, roleRepoCreate}
+var projectPermissions = []string{roleProjectRead, roleProjectWrite, roleProjectAdmin, roleRepoCreate}
 
 func (p *projectBuilder) ResourceType(ctx context.Context) *v2.ResourceType {
 	return p.resourceType
@@ -190,7 +189,7 @@ func (p *projectBuilder) Grant(ctx context.Context, principal *v2.Resource, enti
 	}
 
 	switch permission {
-	case roleProjectCreate, roleProjectWrite, roleProjectAdmin, roleProjectRead, roleRepoCreate:
+	case roleProjectWrite, roleProjectAdmin, roleProjectRead, roleRepoCreate:
 	default:
 		return nil, fmt.Errorf("bitbucket(dc)-connector: invalid permission type: %s", permission)
 	}
@@ -283,7 +282,7 @@ func (p *projectBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotatio
 	}
 
 	switch permission {
-	case roleProjectCreate, roleProjectWrite, roleProjectAdmin, roleProjectRead, roleRepoCreate:
+	case roleProjectWrite, roleProjectAdmin, roleProjectRead, roleRepoCreate:
 	default:
 		return nil, fmt.Errorf("bitbucket(dc)-connector: invalid permission type: %s", permission)
 	}
