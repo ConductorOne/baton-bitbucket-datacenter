@@ -3,14 +3,16 @@ module github.com/conductorone/baton-bitbucket-datacenter
 go 1.22.2
 
 require (
-	github.com/conductorone/baton-sdk v0.2.51
+	github.com/conductorone/baton-sdk v0.2.56
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 	go.uber.org/zap v1.27.0
 )
 
 require (
-	github.com/allegro/bigcache/v3 v3.1.0 // indirect
 	github.com/deckarep/golang-set/v2 v2.6.0 // indirect
+	github.com/dolthub/maphash v0.1.0 // indirect
+	github.com/gammazero/deque v0.2.1 // indirect
+	github.com/maypok86/otter v1.2.4 // indirect
 	go.opentelemetry.io/otel v1.27.0 // indirect
 	go.opentelemetry.io/otel/metric v1.27.0 // indirect
 )
