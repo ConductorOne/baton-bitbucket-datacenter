@@ -28,7 +28,7 @@ const (
 	roleRepoAdmin  = "REPO_ADMIN"
 )
 
-var repositoryRoles = []string{roleRepoRead, roleRepoWrite, roleRepoAdmin, roleRepoCreate}
+var repositoryRoles = []string{roleRepoRead, roleRepoWrite, roleRepoAdmin}
 
 // Create a new connector resource for an Bitbucket Repository.
 func repositoryResource(_ context.Context, repository *client.Repos, parentResourceID *v2.ResourceId) (*v2.Resource, error) {
