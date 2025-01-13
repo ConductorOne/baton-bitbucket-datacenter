@@ -204,7 +204,7 @@ func (r *repoBuilder) Grant(ctx context.Context, principal *v2.Resource, entitle
 
 	switch principal.Id.ResourceType {
 	case resourceTypeUser.Id:
-		userName := principal.DisplayName
+		userName := principal.Id.Resource
 
 		userRepositoryPermissions, err := listUserRepositoryPermissions(ctx, r.client, projectKey, repoSlug)
 		if err != nil {
@@ -239,7 +239,7 @@ func (r *repoBuilder) Grant(ctx context.Context, principal *v2.Resource, entitle
 			zap.String("RepositorySlug", repoSlug),
 		)
 	case resourceTypeGroup.Id:
-		groupName := principal.DisplayName
+		groupName := principal.Id.Resource
 		groupRepositoryPermissions, err := listGroupRepositoryPermissions(ctx, r.client, projectKey, repoSlug)
 		if err != nil {
 			return nil, err
@@ -324,7 +324,7 @@ func (r *repoBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.
 			return annotations.New(&v2.GrantAlreadyRevoked{}), nil
 		}
 
-		err = r.client.RevokeUserRepositoryPermission(ctx, projectKey, repoSlug, principal.DisplayName)
+		err = r.client.RevokeUserRepositoryPermission(ctx, projectKey, repoSlug, principal.Id.Resource)
 		if err != nil {
 			return nil, fmt.Errorf("bitbucket(dc)-connector: failed to remove repository user permission: %w", err)
 		}
@@ -341,7 +341,7 @@ func (r *repoBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.
 		}
 
 		index := slices.IndexFunc(listGroups, func(c client.GroupsPermissions) bool {
-			return c.Group.Name == principal.DisplayName
+			return c.Group.Name == principal.Id.Resource
 		})
 		if index < 0 {
 			l.Info(
@@ -352,7 +352,7 @@ func (r *repoBuilder) Revoke(ctx context.Context, grant *v2.Grant) (annotations.
 			return annotations.New(&v2.GrantAlreadyRevoked{}), nil
 		}
 
-		err = r.client.RevokeGroupRepositoryPermission(ctx, projectKey, repoSlug, principal.DisplayName)
+		err = r.client.RevokeGroupRepositoryPermission(ctx, projectKey, repoSlug, principal.Id.Resource)
 		if err != nil {
 			return nil, fmt.Errorf("bitbucket(dc)-connector: failed to remove repository group permission: %w", err)
 		}
