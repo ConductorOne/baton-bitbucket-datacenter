@@ -32,7 +32,7 @@ func userResource(_ context.Context, user *client.User, parentResourceID *v2.Res
 		"user_type":    user.Type,
 	}
 
-	var userStatus v2.UserTrait_Status_Status = v2.UserTrait_Status_STATUS_ENABLED
+	var userStatus = v2.UserTrait_Status_STATUS_ENABLED
 	switch user.Active {
 	case true:
 		userStatus = v2.UserTrait_Status_STATUS_ENABLED

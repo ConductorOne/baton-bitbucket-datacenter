@@ -48,4 +48,4 @@ var constraints = []field.SchemaFieldRelationship{
 	field.FieldsMutuallyExclusive(BitbucketToken, BitbucketPassword),
 }
 
-var cfg = field.NewConfiguration(fields, constraints...)
+var cfg = field.NewConfiguration(fields, field.WithConstraints(constraints...))
