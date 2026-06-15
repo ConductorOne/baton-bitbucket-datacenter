@@ -12,6 +12,7 @@ var (
 	BitbucketPassword = field.StringField(
 		"bitbucketdc-password",
 		field.WithDescription("Application password used to connect to the BitBucketDC API."),
+		field.WithIsSecret(true),
 	)
 	BitbucketBaseUrl = field.StringField(
 		"bitbucketdc-baseurl",
@@ -22,6 +23,7 @@ var (
 	BitbucketToken = field.StringField(
 		"bitbucketdc-token",
 		field.WithDescription("HTTP access tokens in Bitbucket Data Center"),
+		field.WithIsSecret(true),
 	)
 	SkipRepos = field.BoolField(
 		"skip-repos",
