@@ -1,9 +1,17 @@
 # Mirrors baton-admin's managed golangci-lint v2 config (pkg/files/.golangci.yml).
 # This repo opts out of the managed verify workflow, so baton-admin does not
 # push this file; keep it in sync by hand.
+#
+# Deliberate differences from the managed file, so nothing the old v1 config
+# checked here is lost:
+#   - run.modules-download-mode is vendor: this repo vendors, and CI builds
+#     against vendor/, so lint should resolve the same tree and surface drift.
+#   - formatters.enable has goimports, which v2 reclassified from linter to
+#     formatter; the managed file enables no formatter.
+#   - linters.enable has usetesting, the v2 successor of tenv.
 version: "2"
 run:
-  modules-download-mode: readonly
+  modules-download-mode: vendor
 linters:
   default: none
   enable:
@@ -38,6 +46,7 @@ linters:
     - unconvert # Remove unnecessary type conversions
     - unused # Checks Go code for unused constants, variables, functions and types
     - usestdlibvars # detect the possibility to use variables/constants from the Go standard library
+    - usetesting # detects using os.Setenv, os.TempDir and friends instead of their testing.T equivalents (replaces tenv)
     - whitespace # Tool for detection of leading and trailing whitespace
   settings:
     exhaustive:
@@ -125,6 +134,8 @@ linters:
 issues:
   max-same-issues: 50
 formatters:
+  enable:
+    - goimports # In addition to fixing imports, goimports also formats your code in the same style as gofmt.
   exclusions:
     generated: lax
     paths:
