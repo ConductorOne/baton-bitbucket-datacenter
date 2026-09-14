@@ -64,6 +64,10 @@ const (
 	groupsWithPermission                  = "permissions/groups"
 	addUserToGroupsEndpoint               = "rest/api/latest/admin/users/add-groups"
 	removeUserFromGroupEndpoint           = "rest/api/latest/admin/users/remove-group"
+
+	// Query parameter names shared by the permission endpoints.
+	nameParam       = "name"
+	permissionParam = "permission"
 )
 
 type Auth struct {
@@ -374,7 +378,7 @@ func (d *DataCenterClient) GetGlobalUserPermissions(ctx context.Context, pToken 
 
 func (d *DataCenterClient) RevokeUserGlobalPermission(ctx context.Context, userName string) error {
 	uri, err := d.MakeURL(ctx, allUsersWithGlobalPermissionEndpoint, map[string]string{
-		"name": userName,
+		nameParam: userName,
 	})
 	if err != nil {
 		return err
@@ -390,8 +394,8 @@ func (d *DataCenterClient) RevokeUserGlobalPermission(ctx context.Context, userN
 
 func (d *DataCenterClient) UpdateUserGlobalPermission(ctx context.Context, userName, permission string) error {
 	uri, err := d.MakeURL(ctx, allUsersWithGlobalPermissionEndpoint, map[string]string{
-		"name":       userName,
-		"permission": permission,
+		nameParam:       userName,
+		permissionParam: permission,
 	})
 	if err != nil {
 		return err
@@ -430,7 +434,7 @@ func (d *DataCenterClient) GetGlobalGroupPermissions(ctx context.Context, pToken
 
 func (d *DataCenterClient) RevokeGroupGlobalPermission(ctx context.Context, groupName string) error {
 	uri, err := d.MakeURL(ctx, allGroupsWithGlobalPermissionEndpoint, map[string]string{
-		"name": groupName,
+		nameParam: groupName,
 	})
 	if err != nil {
 		return err
@@ -446,8 +450,8 @@ func (d *DataCenterClient) RevokeGroupGlobalPermission(ctx context.Context, grou
 
 func (d *DataCenterClient) UpdateGroupGlobalPermission(ctx context.Context, groupName, permission string) error {
 	uri, err := d.MakeURL(ctx, allGroupsWithGlobalPermissionEndpoint, map[string]string{
-		"name":       groupName,
-		"permission": permission,
+		nameParam:       groupName,
+		permissionParam: permission,
 	})
 	if err != nil {
 		return err
@@ -632,8 +636,8 @@ func (d *DataCenterClient) UpdateUserRepositoryPermission(ctx context.Context, p
 	)
 
 	uri, err := d.MakeURL(ctx, path, map[string]string{
-		"name":       userName,
-		"permission": permission,
+		nameParam:       userName,
+		permissionParam: permission,
 	})
 	if err != nil {
 		return err
@@ -664,8 +668,8 @@ func (d *DataCenterClient) UpdateGroupRepositoryPermission(ctx context.Context, 
 	)
 
 	uri, err := d.MakeURL(ctx, path, map[string]string{
-		"name":       groupName,
-		"permission": permission,
+		nameParam:       groupName,
+		permissionParam: permission,
 	})
 	if err != nil {
 		return err
@@ -695,7 +699,7 @@ func (d *DataCenterClient) RevokeGroupRepositoryPermission(ctx context.Context, 
 		groupsWithPermission,
 	)
 	uri, err := d.MakeURL(ctx, path, map[string]string{
-		"name": groupName,
+		nameParam: groupName,
 	})
 	if err != nil {
 		return err
@@ -725,7 +729,7 @@ func (d *DataCenterClient) RevokeUserRepositoryPermission(ctx context.Context, p
 		usersWithPermission,
 	)
 	uri, err := d.MakeURL(ctx, path, map[string]string{
-		"name": userName,
+		nameParam: userName,
 	})
 	if err != nil {
 		return err
@@ -754,7 +758,7 @@ func (d *DataCenterClient) RevokeUserProjectPermission(ctx context.Context, proj
 		usersWithPermission,
 	)
 	uri, err := d.MakeURL(ctx, path, map[string]string{
-		"name": userName,
+		nameParam: userName,
 	})
 	if err != nil {
 		return err
@@ -783,7 +787,7 @@ func (d *DataCenterClient) RevokeGroupProjectPermission(ctx context.Context, pro
 		groupsWithPermission,
 	)
 	uri, err := d.MakeURL(ctx, path, map[string]string{
-		"name": groupName,
+		nameParam: groupName,
 	})
 	if err != nil {
 		return err
@@ -812,8 +816,8 @@ func (d *DataCenterClient) UpdateUserProjectPermission(ctx context.Context, proj
 		usersWithPermission,
 	)
 	uri, err := d.MakeURL(ctx, path, map[string]string{
-		"name":       userName,
-		"permission": permission,
+		nameParam:       userName,
+		permissionParam: permission,
 	})
 	if err != nil {
 		return err
@@ -842,8 +846,8 @@ func (d *DataCenterClient) UpdateGroupProjectPermission(ctx context.Context, pro
 		groupsWithPermission,
 	)
 	uri, err := d.MakeURL(ctx, path, map[string]string{
-		"name":       groupName,
-		"permission": permission,
+		nameParam:       groupName,
+		permissionParam: permission,
 	})
 	if err != nil {
 		return err
