@@ -26,7 +26,7 @@ baton resources
 ## docker
 
 ```
-docker run --rm -v $(pwd):/out -e BATON_BITBUCKETDC_USERNAME=bitbucketdc-username BATON_BITBUCKETDC_PASSWORD=bitbucketdc-password BATON_BITBUCKETDC_BASE_URL=bitbucketdc-baseurl ghcr.io/conductorone/baton-bitbucket-datacenter:latest -f "/out/sync.c1z"
+docker run --rm -v $(pwd):/out -e BATON_BITBUCKETDC_USERNAME=bitbucketdc-username BATON_BITBUCKETDC_PASSWORD=bitbucketdc-password BATON_BITBUCKETDC_BASE_URL=bitbucketdc-baseurl public.ecr.aws/conductorone/baton-bitbucket-datacenter:latest -f "/out/sync.c1z"
 docker run --rm -v $(pwd):/out ghcr.io/conductorone/baton:latest -f "/out/sync.c1z" resources
 ```
 
