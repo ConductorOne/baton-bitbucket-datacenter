@@ -70,6 +70,15 @@ These endpoints are under Bitbucket's `admin/` namespace and require credentials
 least the `ADMIN` (Administrator) global permission; `SYS_ADMIN` also works. `LICENSED_USER`
 is not sufficient and is rejected.
 
+**HTTP access tokens are not supported for account provisioning**, regardless of the scope
+granted when the token was created (verified live against Bitbucket Data Center 8.9.4: Project
+Admin + Repository Admin, the maximum scope an HTTP access token can hold, is still rejected
+with a 401 `AuthorisationException` on both create and delete, even when the token belongs to a
+`SYS_ADMIN` user - personal access tokens in Bitbucket Server cannot exercise a user's global
+permissions). To use `--provisioning`, configure the connector with `BATON_BITBUCKETDC_USERNAME`
+/ `BATON_BITBUCKETDC_PASSWORD` (basic auth) for a user with global `ADMIN` or `SYS_ADMIN`
+permission instead of `BATON_BITBUCKETDC_TOKEN`; the connector rejects configuring both at once.
+
 # Contributing, Support and Issues
 
 We started Baton because we were tired of taking screenshots and manually building spreadsheets. We welcome contributions, and ideas, no matter how small -- our goal is to make identity and permissions sprawl less painful for everyone. If you have questions, problems, or ideas: Please open a Github Issue!

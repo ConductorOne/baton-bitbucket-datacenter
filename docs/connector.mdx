@@ -37,11 +37,16 @@ Configuring the connector requires you to pass in credentials generated in Bitbu
 	- Project: Admin
 	- Repository: Admin
 
-    If you want C1 to provision (create and delete) Bitbucket user accounts through this
-    connector, the account used to generate the token also needs at least the global
-    **Administrator** (`ADMIN`) permission, since account creation and deletion call
-    Bitbucket's `admin/users` endpoint. `SYS_ADMIN` also works; the `LICENSED_USER`
-    permission is not sufficient.
+    This token is enough to sync data, but **not** to provision (create and delete) Bitbucket
+    user accounts. Verified live against Bitbucket Data Center 8.9.4: Project Admin + Repository
+    Admin is the maximum permission scope an HTTP access token can hold, and account
+    create/delete still fail with a 401 `AuthorisationException` even when the token belongs to
+    a `SYS_ADMIN` user - personal access tokens cannot exercise a user's global permissions in
+    Bitbucket Server. If you want C1 to provision accounts through this connector, skip the
+    token and instead configure the connector with a username and password (basic auth) for a
+    user with the global **Administrator** (`ADMIN`) permission; `SYS_ADMIN` also works. The
+    `LICENSED_USER` permission is not sufficient, and a token cannot be combined with
+    username/password - the connector rejects configuring both at once.
 
     When creating an account, you can optionally set **Add to default group**, which adds
     the new user to Bitbucket's default group. The default group controls the user's
@@ -130,13 +135,24 @@ stringData:
   # C1 credentials
   BATON_CLIENT_ID: <C1 client ID>
   BATON_CLIENT_SECRET: <C1 client secret>
-  
+
   # Bitbucket Data Center credentials
   BATON_BITBUCKETDC_BASEURL: <Full URL of your Bitbucket Data Center Server (such as http://localhost:7990)>
   BATON_BITBUCKETDC_TOKEN: <Bitbucket HTTP access token>
-  BATON_USERNAME: <Username of Bitbucket administrator>
+```
 
-  # Optional: include if you want C1 to provision access using this connector
+If you also want C1 to provision (create and delete) Bitbucket user accounts through this
+connector, HTTP access tokens cannot be used for that - replace `BATON_BITBUCKETDC_TOKEN` with
+basic auth credentials for a Bitbucket user with global `ADMIN` or `SYS_ADMIN` permission
+instead (the connector rejects configuring a token and username/password at the same time):
+
+```yaml expandable
+  # Bitbucket Data Center credentials (provisioning: basic auth instead of a token)
+  BATON_BITBUCKETDC_BASEURL: <Full URL of your Bitbucket Data Center Server (such as http://localhost:7990)>
+  BATON_BITBUCKETDC_USERNAME: <Username of a Bitbucket user with global ADMIN or SYS_ADMIN permission>
+  BATON_BITBUCKETDC_PASSWORD: <That user's password>
+
+  # Required to enable provisioning
   BATON_PROVISIONING: true
 ```
 
