@@ -2,13 +2,18 @@ package connector
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"slices"
 
 	"github.com/conductorone/baton-bitbucket-datacenter/pkg/client"
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
 	"github.com/conductorone/baton-sdk/pkg/annotations"
+	"github.com/conductorone/baton-sdk/pkg/connectorbuilder"
 	"github.com/conductorone/baton-sdk/pkg/pagination"
 	rs "github.com/conductorone/baton-sdk/pkg/types/resource"
+	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
+	"go.uber.org/zap"
 )
 
 func userResource(_ context.Context, user *client.User, parentResourceID *v2.ResourceId, opts []rs.UserTraitOption) (*v2.Resource, error) {
@@ -129,6 +134,141 @@ func (u *userBuilder) Entitlements(_ context.Context, resource *v2.Resource, _ *
 // Grants always returns an empty slice for users since they don't have any entitlements.
 func (u *userBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
 	return nil, "", nil, nil
+}
+
+// CreateAccountCapabilityDetails declares NO_PASSWORD: Bitbucket's create-user API
+// requires a password on every call, but the connector-generated value is never
+// returned to the caller as PlaintextData (see CreateAccount), so from the
+// platform/admin's perspective no usable credential comes out of this flow.
+// Advertising RANDOM_PASSWORD here would be dishonest - it implies a credential the
+// admin can retrieve, and none exists.
+func (u *userBuilder) CreateAccountCapabilityDetails(ctx context.Context) (*v2.CredentialDetailsAccountProvisioning, annotations.Annotations, error) {
+	return &v2.CredentialDetailsAccountProvisioning{
+		SupportedCredentialOptions: []v2.CapabilityDetailCredentialOption{
+			v2.CapabilityDetailCredentialOption_CAPABILITY_DETAIL_CREDENTIAL_OPTION_NO_PASSWORD,
+		},
+		PreferredCredentialOption: v2.CapabilityDetailCredentialOption_CAPABILITY_DETAIL_CREDENTIAL_OPTION_NO_PASSWORD,
+	}, nil, nil
+}
+
+// CreateAccount provisions a new local Bitbucket user account.
+//
+// POST /rest/api/latest/admin/users returns 204 No Content on success, so the
+// created user is fetched afterward (by name) to build the resulting resource.
+//
+// The baton-sdk version vendored by this connector (v0.3.8) only defines
+// Success and ActionRequired branches on CreateAccountResponse - there is no
+// AlreadyExists result type to return for a 409. To keep CreateAccount
+// idempotent (never error on "already exists") within that constraint, a 409
+// is treated the same as a fresh create as long as the post-create lookup can
+// find the existing user: both return SuccessResult with the current resource.
+// If the lookup fails or finds nothing after a confirmed 409, this returns an
+// error rather than fabricating a resource; on the narrow case of a 409 immediately
+// followed by a flaky lookup, a retry (e.g. account-provisioning@v3's create-delete-
+// create check) may need to run again rather than idempotently succeeding, since
+// there is no AlreadyExistsResult{} to fall back to in this SDK version.
+func (u *userBuilder) CreateAccount(
+	ctx context.Context,
+	accountInfo *v2.AccountInfo,
+	_ *v2.CredentialOptions,
+) (connectorbuilder.CreateAccountResponse, []*v2.PlaintextData, annotations.Annotations, error) {
+	l := ctxzap.Extract(ctx)
+	profileMap := accountInfo.GetProfile().AsMap()
+
+	// Precedence: the schema-declared profile field wins; GetLogin() is only the
+	// fallback, since it's C1's invitee login and can be populated even when the
+	// admin typed a different value into the schema's Username field.
+	login, _, err := callerString(profileMap, "login")
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if login == "" {
+		login = accountInfo.GetLogin()
+	}
+	if login == "" {
+		return nil, nil, nil, fmt.Errorf("bitbucket(dc)-connector: create account: login is required")
+	}
+
+	displayName, _, err := callerString(profileMap, "display_name")
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if displayName == "" {
+		return nil, nil, nil, fmt.Errorf("bitbucket(dc)-connector: create account: display_name is required")
+	}
+
+	email, _, err := callerString(profileMap, "email")
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if email == "" {
+		for _, e := range accountInfo.GetEmails() {
+			if e.GetAddress() != "" {
+				email = e.GetAddress()
+				break
+			}
+		}
+	}
+	if email == "" {
+		return nil, nil, nil, fmt.Errorf("bitbucket(dc)-connector: create account: email is required")
+	}
+
+	password, err := generatePassword()
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("bitbucket(dc)-connector: create account %s: generate password: %w", login, err)
+	}
+
+	// addToDefaultGroup is intentionally false: granting default-group membership
+	// is an entitlement concern (Grant/Revoke), not account creation.
+	err = u.client.CreateUser(ctx, login, password, displayName, email, false)
+	password = "" // never retained past the create call; never logged.
+	alreadyExists := err != nil && client.IsAlreadyExistsError(err)
+	if err != nil && !alreadyExists {
+		return nil, nil, nil, fmt.Errorf("bitbucket(dc)-connector: create account %s: %w", login, err)
+	}
+	if alreadyExists {
+		l.Debug("bitbucket(dc)-connector: create account: user already exists", zap.String("login", login))
+	}
+
+	fetched, err := u.client.GetUserByName(ctx, login)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("bitbucket(dc)-connector: create account %s: fetch after create: %w", login, err)
+	}
+	if fetched == nil {
+		return nil, nil, nil, fmt.Errorf("bitbucket(dc)-connector: create account %s: fetch after create: user not found", login)
+	}
+
+	resource, err := userResource(ctx, fetched, nil, nil)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("bitbucket(dc)-connector: create account %s: %w", login, err)
+	}
+
+	return &v2.CreateAccountResponse_SuccessResult{
+		Resource:              resource,
+		IsCreateAccountResult: true,
+	}, nil, nil, nil
+}
+
+// Delete deprovisions a Bitbucket user account by deleting it.
+//
+// A 404 (user already gone) is treated as success, since the C1 platform retries
+// deletes and a connector that errors on an already-deleted user fails every retry.
+// Any other failure - notably a user managed by an external directory (LDAP/Crowd),
+// which Bitbucket refuses to delete through this API - is surfaced with the
+// upstream response body so the operator can see why the delete did not happen.
+func (u *userBuilder) Delete(ctx context.Context, resourceID *v2.ResourceId) (annotations.Annotations, error) {
+	err := u.client.DeleteUser(ctx, resourceID.Resource)
+	if err != nil {
+		if client.IsNotFoundError(err) {
+			return nil, nil
+		}
+		var bbErr *client.BitbucketError
+		if errors.As(err, &bbErr) && bbErr.ErrorSummary != "" {
+			return nil, fmt.Errorf("bitbucket(dc)-connector: delete user %s: %s: %s", resourceID.Resource, bbErr.Error(), bbErr.ErrorSummary)
+		}
+		return nil, fmt.Errorf("bitbucket(dc)-connector: delete user %s: %w", resourceID.Resource, err)
+	}
+	return nil, nil
 }
 
 func newUserBuilder(c *client.DataCenterClient, userGroups []string) *userBuilder {

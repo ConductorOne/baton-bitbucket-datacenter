@@ -42,6 +42,40 @@ func (c *Connector) Metadata(ctx context.Context) (*v2.ConnectorMetadata, error)
 	return &v2.ConnectorMetadata{
 		DisplayName: "Bitbucket Datacenter Connector",
 		Description: "Connector syncing users, groups, projects and repositories from Bitbucket Datacenter.",
+		AccountCreationSchema: &v2.ConnectorAccountCreationSchema{
+			FieldMap: map[string]*v2.ConnectorAccountCreationSchema_Field{
+				"login": {
+					DisplayName: "Username",
+					Required:    true,
+					Description: "The username for the new Bitbucket user.",
+					Field: &v2.ConnectorAccountCreationSchema_Field_StringField{
+						StringField: &v2.ConnectorAccountCreationSchema_StringField{},
+					},
+					Placeholder: "jdoe",
+					Order:       1,
+				},
+				"display_name": {
+					DisplayName: "Display Name",
+					Required:    true,
+					Description: "The display name for the new Bitbucket user.",
+					Field: &v2.ConnectorAccountCreationSchema_Field_StringField{
+						StringField: &v2.ConnectorAccountCreationSchema_StringField{},
+					},
+					Placeholder: "Jane Doe",
+					Order:       2,
+				},
+				"email": {
+					DisplayName: "Email",
+					Required:    true,
+					Description: "The email address for the new Bitbucket user.",
+					Field: &v2.ConnectorAccountCreationSchema_Field_StringField{
+						StringField: &v2.ConnectorAccountCreationSchema_StringField{},
+					},
+					Placeholder: "jane.doe@example.com",
+					Order:       3,
+				},
+			},
+		},
 	}, nil
 }
 

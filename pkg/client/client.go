@@ -36,6 +36,24 @@ func (b *BitbucketError) Error() string {
 	return b.ErrorMessage
 }
 
+// IsNotFoundError reports whether err represents an HTTP 404 Not Found response.
+func IsNotFoundError(err error) bool {
+	var bbErr *BitbucketError
+	if errors.As(err, &bbErr) {
+		return bbErr.ErrorCode == http.StatusNotFound
+	}
+	return false
+}
+
+// IsAlreadyExistsError reports whether err represents an HTTP 409 Conflict response.
+func IsAlreadyExistsError(err error) bool {
+	var bbErr *BitbucketError
+	if errors.As(err, &bbErr) {
+		return bbErr.ErrorCode == http.StatusConflict
+	}
+	return false
+}
+
 // GET - http://{baseurl}/rest/api/latest/users
 // GET - http://{baseurl}/rest/api/latest/projects
 // GET - http://{baseurl}/rest/api/latest/admin/groups
@@ -64,10 +82,12 @@ const (
 	groupsWithPermission                  = "permissions/groups"
 	addUserToGroupsEndpoint               = "rest/api/latest/admin/users/add-groups"
 	removeUserFromGroupEndpoint           = "rest/api/latest/admin/users/remove-group"
+	adminUsersEndpoint                    = "rest/api/latest/admin/users"
 
 	// Query parameter names shared by the permission endpoints.
 	nameParam       = "name"
 	permissionParam = "permission"
+	filterParam     = "filter"
 )
 
 type Auth struct {
@@ -230,6 +250,111 @@ func (d *DataCenterClient) GetUsers(ctx context.Context, pToken *pagination.Toke
 
 	nextPageToken, err := getNextPageToken(pToken, userData.NextPageStart, userData.IsLastPage)
 	return userData.Users, nextPageToken, err
+}
+
+// GetUserByName looks up a single user by exact name match via the users search filter.
+// The filter does substring matching server-side, so results are filtered again here for
+// an exact match on the "name" field.
+// GET - http://{baseurl}/rest/api/latest/users?filter={name}
+// https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-system-maintenance/#api-api-latest-users-get
+func (d *DataCenterClient) GetUserByName(ctx context.Context, name string) (*User, error) {
+	start := 0
+	for {
+		uri, err := d.MakeURL(ctx, allUsersEndpoint, map[string]string{
+			filterParam: name,
+			"start":     strconv.Itoa(start),
+			"limit":     strconv.Itoa(ITEMSPERPAGE),
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		var userData UsersAPIData
+		resp, err := d.Do(ctx, http.MethodGet, uri, nil, &userData)
+		if err != nil {
+			return nil, err
+		}
+		err = resp.Body.Close()
+		if err != nil {
+			return nil, err
+		}
+
+		for _, u := range userData.Users {
+			if u.Name == name {
+				found := u
+				return &found, nil
+			}
+		}
+
+		if userData.IsLastPage {
+			return nil, nil
+		}
+		start = userData.NextPageStart
+	}
+}
+
+// CreateUser creates a new local Bitbucket user account.
+// POST - http://{baseurl}/rest/api/latest/admin/users?name&password&displayName&emailAddress&addToDefaultGroup
+// Returns 204 No Content on success, 409 Conflict if a user with that name already exists.
+// Requires the "X-Atlassian-Token: no-check" header: without it, Bitbucket's XSRF filter
+// rejects this POST with 403 "XSRF check failed" even with valid credentials, since the
+// request carries no browser session token (confirmed against a live Bitbucket Data Center
+// 8.9.4 instance - this is not documented on the endpoint's reference page).
+// https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-user-management/#api-admin-users-post
+func (d *DataCenterClient) CreateUser(ctx context.Context, name, password, displayName, emailAddress string, addToDefaultGroup bool) error {
+	uri, err := d.MakeURL(ctx, adminUsersEndpoint, map[string]string{
+		nameParam:           name,
+		"password":          password,
+		"displayName":       displayName,
+		"emailAddress":      emailAddress,
+		"addToDefaultGroup": strconv.FormatBool(addToDefaultGroup),
+	})
+	if err != nil {
+		return err
+	}
+
+	resp, err := d.Do(ctx, http.MethodPost, uri, nil, nil, uhttp.WithHeader("X-Atlassian-Token", "no-check"))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("create user: unexpected status code %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
+// DeleteUser deletes a local Bitbucket user account by name.
+// DELETE - http://{baseurl}/rest/api/latest/admin/users?name={name}
+// Returns 404 if the user does not exist (already deleted). A user belonging to an
+// external directory (LDAP/Crowd) is not deletable through this API and the request
+// fails with a non-404 error carrying a descriptive body.
+// On success this returns 200 OK with the deleted user's representation as the body, NOT
+// the 204 No Content the reference docs describe - confirmed against a live Bitbucket
+// Data Center 8.9.4 instance. 204 is also accepted defensively in case other server
+// versions follow the documented behavior.
+// https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-user-management/#api-admin-users-delete
+func (d *DataCenterClient) DeleteUser(ctx context.Context, name string) error {
+	uri, err := d.MakeURL(ctx, adminUsersEndpoint, map[string]string{
+		nameParam: name,
+	})
+	if err != nil {
+		return err
+	}
+
+	resp, err := d.Do(ctx, http.MethodDelete, uri, nil, nil, uhttp.WithHeader("X-Atlassian-Token", "no-check"))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("delete user: unexpected status code %d", resp.StatusCode)
+	}
+
+	return nil
 }
 
 func (d *DataCenterClient) GetGroupUsers(ctx context.Context, group string) ([]User, error) {
