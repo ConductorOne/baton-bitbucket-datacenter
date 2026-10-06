@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/conductorone/baton-sdk/pkg/pagination"
 	"github.com/conductorone/baton-sdk/pkg/uhttp"
@@ -256,9 +257,11 @@ func (d *DataCenterClient) GetUsers(ctx context.Context, pToken *pagination.Toke
 	return userData.Users, nextPageToken, err
 }
 
-// GetUserByName looks up a single user by exact name match via the users search filter.
-// The filter does substring matching server-side, so results are filtered again here for
-// an exact match on the "name" field.
+// GetUserByName looks up a single user by case-insensitive exact name match via the users
+// search filter. The filter does substring matching server-side, so results are filtered
+// again here for an exact match on the "name" field; the match is case-insensitive because
+// Bitbucket usernames are themselves case-insensitive (CreateAccount can be asked to create
+// "JDoe" when the account was originally created as "jdoe").
 // GET - http://{baseurl}/rest/api/latest/users?filter={name}
 // https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-system-maintenance/#api-api-latest-users-get
 func (d *DataCenterClient) GetUserByName(ctx context.Context, name string) (*User, error) {
@@ -284,7 +287,7 @@ func (d *DataCenterClient) GetUserByName(ctx context.Context, name string) (*Use
 		}
 
 		for _, u := range userData.Users {
-			if u.Name == name {
+			if strings.EqualFold(u.Name, name) {
 				found := u
 				return &found, nil
 			}

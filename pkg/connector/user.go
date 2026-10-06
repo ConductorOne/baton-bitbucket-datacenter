@@ -240,6 +240,14 @@ func (u *userBuilder) CreateAccount(
 		l.Debug("bitbucket(dc)-connector: create account: user already exists", zap.String("login", login))
 	}
 
+	// Bypass uhttp's in-memory GET cache (1h TTL): without this, a lookup moments after a
+	// create/delete/create cycle on the same login can return another call's stale cached
+	// response for the same filter=login URL, which would also make the 409 email guard
+	// below compare against stale data instead of the account that actually exists now.
+	if cacheErr := uhttp.ClearCaches(ctx); cacheErr != nil {
+		l.Warn("bitbucket(dc)-connector: create account: clear http cache", zap.Error(cacheErr))
+	}
+
 	fetched, err := u.client.GetUserByName(ctx, login)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("bitbucket(dc)-connector: create account %s: fetch after create: %w", login, err)
