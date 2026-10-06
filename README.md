@@ -48,6 +48,24 @@ baton resources
 - Projects
 - Repositories
 
+# Account Provisioning
+
+When run with the `--provisioning` flag, `baton-bitbucket-datacenter` supports creating and
+deleting Bitbucket users:
+
+- **Create account**: provisions a new local Bitbucket user (`POST /rest/api/latest/admin/users`)
+  from a username, display name, and email address. A random password is generated to satisfy the
+  API's required `password` parameter; it is never logged, persisted, or returned to the caller.
+  Creating an account for a username that already exists is treated as a successful no-op.
+- **Delete account**: deletes a Bitbucket user (`DELETE /rest/api/latest/admin/users?name=`).
+  Deleting a user that no longer exists is treated as a successful no-op. Users managed by an
+  external directory (e.g. LDAP, Crowd) cannot be deleted through this API; the connector surfaces
+  a clear error in that case instead of silently failing.
+
+These endpoints are under Bitbucket's `admin/` namespace and require credentials with at
+least the `ADMIN` (Administrator) global permission; `SYS_ADMIN` also works. `LICENSED_USER`
+is not sufficient and is rejected.
+
 # Contributing, Support and Issues
 
 We started Baton because we were tired of taking screenshots and manually building spreadsheets. We welcome contributions, and ideas, no matter how small -- our goal is to make identity and permissions sprawl less painful for everyone. If you have questions, problems, or ideas: Please open a Github Issue!
