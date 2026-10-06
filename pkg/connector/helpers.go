@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"math/big"
+	"strconv"
 	"strings"
 
 	"github.com/conductorone/baton-bitbucket-datacenter/pkg/client"
@@ -37,20 +38,32 @@ func callerString(profile map[string]any, key string) (string, bool, error) {
 // callerBool mirrors callerString's semantics for boolean profile fields: absent means
 // the caller didn't set it (default to false), but present-with-the-wrong-type must fail
 // loudly rather than silently default, since that would substitute a value the admin
-// never asked for.
+// never asked for. A string is also accepted and parsed with strconv.ParseBool (after
+// trimming whitespace and lowercasing, so "True"/" true " work as well as "true"),
+// since some callers (e.g. CLI/form-driven invocations) can only send string profile
+// values; a string that doesn't parse as a bool still fails loudly rather than defaulting.
 func callerBool(profile map[string]any, key string) (bool, bool, error) {
 	raw, present := profile[key]
 	if !present || raw == nil {
 		return false, false, nil
 	}
-	value, ok := raw.(bool)
-	if !ok {
-		return false, true, uhttp.WrapErrors(
-			codes.InvalidArgument,
-			fmt.Sprintf("bitbucket(dc)-connector: invalid %s: expected a bool, got %T", key, raw),
-		)
+	if value, ok := raw.(bool); ok {
+		return value, true, nil
 	}
-	return value, true, nil
+	if str, ok := raw.(string); ok {
+		value, err := strconv.ParseBool(strings.ToLower(strings.TrimSpace(str)))
+		if err != nil {
+			return false, true, uhttp.WrapErrors(
+				codes.InvalidArgument,
+				fmt.Sprintf("bitbucket(dc)-connector: invalid %s: cannot parse %q as a bool", key, str),
+			)
+		}
+		return value, true, nil
+	}
+	return false, true, uhttp.WrapErrors(
+		codes.InvalidArgument,
+		fmt.Sprintf("bitbucket(dc)-connector: invalid %s: expected a bool, got %T", key, raw),
+	)
 }
 
 // generatedPasswordLength is comfortably above Bitbucket Data Center's default
