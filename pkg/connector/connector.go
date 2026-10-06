@@ -39,6 +39,8 @@ func (c *Connector) Asset(ctx context.Context, asset *v2.AssetRef) (string, io.R
 
 // Metadata returns metadata about the connector.
 func (c *Connector) Metadata(ctx context.Context) (*v2.ConnectorMetadata, error) {
+	addToDefaultGroupDefault := false
+
 	return &v2.ConnectorMetadata{
 		DisplayName: "Bitbucket Datacenter Connector",
 		Description: "Connector syncing users, groups, projects and repositories from Bitbucket Datacenter.",
@@ -73,6 +75,18 @@ func (c *Connector) Metadata(ctx context.Context) (*v2.ConnectorMetadata, error)
 					},
 					Placeholder: "jane.doe@example.com",
 					Order:       3,
+				},
+				"add_to_default_group": {
+					DisplayName: "Add to default group",
+					Required:    false,
+					Description: "Whether the new user should be added to Bitbucket's default group. " +
+						"The default group controls the user's initial permissions and ability to log in.",
+					Field: &v2.ConnectorAccountCreationSchema_Field_BoolField{
+						BoolField: &v2.ConnectorAccountCreationSchema_BoolField{
+							DefaultValue: &addToDefaultGroupDefault,
+						},
+					},
+					Order: 4,
 				},
 			},
 		},

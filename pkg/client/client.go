@@ -88,6 +88,10 @@ const (
 	nameParam       = "name"
 	permissionParam = "permission"
 	filterParam     = "filter"
+
+	// Query parameter names shared by the paginated list endpoints.
+	startParam = "start"
+	limitParam = "limit"
 )
 
 type Auth struct {
@@ -262,8 +266,8 @@ func (d *DataCenterClient) GetUserByName(ctx context.Context, name string) (*Use
 	for {
 		uri, err := d.MakeURL(ctx, allUsersEndpoint, map[string]string{
 			filterParam: name,
-			"start":     strconv.Itoa(start),
-			"limit":     strconv.Itoa(ITEMSPERPAGE),
+			startParam:  strconv.Itoa(start),
+			limitParam:  strconv.Itoa(ITEMSPERPAGE),
 		})
 		if err != nil {
 			return nil, err
@@ -315,7 +319,7 @@ func (d *DataCenterClient) CreateUser(ctx context.Context, name, password, displ
 
 	resp, err := d.Do(ctx, http.MethodPost, uri, nil, nil, uhttp.WithHeader("X-Atlassian-Token", "no-check"))
 	if err != nil {
-		return err
+		return sanitizeCreateUserError(err)
 	}
 	defer resp.Body.Close()
 
@@ -324,6 +328,31 @@ func (d *DataCenterClient) CreateUser(ctx context.Context, name, password, displ
 	}
 
 	return nil
+}
+
+// sanitizeCreateUserError rebuilds an error from CreateUser's status code and response
+// body alone. The request URL carries the generated password as a query parameter (the
+// only way Bitbucket's create-user API accepts it), and both GetCustomErr's ErrorLink
+// (always req.URL.String()) and uhttp's own transport-error wrapping (which embeds the
+// URL in the error text for timeouts/temporary failures) would otherwise leak it into
+// logs and the error returned to C1. ErrorCode is preserved so IsAlreadyExistsError keeps
+// working on the result.
+func sanitizeCreateUserError(err error) error {
+	var bbErr *BitbucketError
+	if !errors.As(err, &bbErr) {
+		return errors.New("create user: request failed")
+	}
+
+	sanitized := &BitbucketError{ErrorCode: bbErr.ErrorCode}
+	switch {
+	case bbErr.ErrorSummary != "":
+		sanitized.ErrorMessage = bbErr.ErrorSummary
+	case bbErr.ErrorCode != 0:
+		sanitized.ErrorMessage = fmt.Sprintf("create user: unexpected status code %d", bbErr.ErrorCode)
+	default:
+		sanitized.ErrorMessage = "create user: request failed"
+	}
+	return sanitized
 }
 
 // DeleteUser deletes a local Bitbucket user account by name.
@@ -364,9 +393,9 @@ func (d *DataCenterClient) GetGroupUsers(ctx context.Context, group string) ([]U
 
 	for {
 		queryParams := map[string]string{
-			"start": strconv.Itoa(start),
-			"limit": strconv.Itoa(ITEMSPERPAGE),
-			"group": group,
+			startParam: strconv.Itoa(start),
+			limitParam: strconv.Itoa(ITEMSPERPAGE),
+			"group":    group,
 		}
 
 		uri, err := d.MakeURL(ctx, allUsersEndpoint, queryParams)

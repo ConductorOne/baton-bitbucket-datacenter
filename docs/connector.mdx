@@ -42,6 +42,10 @@ Configuring the connector requires you to pass in credentials generated in Bitbu
     **Administrator** (`ADMIN`) permission, since account creation and deletion call
     Bitbucket's `admin/users` endpoint. `SYS_ADMIN` also works; the `LICENSED_USER`
     permission is not sufficient.
+
+    When creating an account, you can optionally set **Add to default group**, which adds
+    the new user to Bitbucket's default group. The default group controls the user's
+    initial permissions and ability to log in; it defaults to off.
     </Step>
     <Step>
     Click **Create**.
