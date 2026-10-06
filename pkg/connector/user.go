@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/conductorone/baton-bitbucket-datacenter/pkg/client"
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
@@ -12,8 +13,11 @@ import (
 	"github.com/conductorone/baton-sdk/pkg/connectorbuilder"
 	"github.com/conductorone/baton-sdk/pkg/pagination"
 	rs "github.com/conductorone/baton-sdk/pkg/types/resource"
+	"github.com/conductorone/baton-sdk/pkg/uhttp"
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
 	"go.uber.org/zap"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func userResource(_ context.Context, user *client.User, parentResourceID *v2.ResourceId, opts []rs.UserTraitOption) (*v2.Resource, error) {
@@ -160,13 +164,17 @@ func (u *userBuilder) CreateAccountCapabilityDetails(ctx context.Context) (*v2.C
 // Success and ActionRequired branches on CreateAccountResponse - there is no
 // AlreadyExists result type to return for a 409. To keep CreateAccount
 // idempotent (never error on "already exists") within that constraint, a 409
-// is treated the same as a fresh create as long as the post-create lookup can
-// find the existing user: both return SuccessResult with the current resource.
-// If the lookup fails or finds nothing after a confirmed 409, this returns an
-// error rather than fabricating a resource; on the narrow case of a 409 immediately
-// followed by a flaky lookup, a retry (e.g. account-provisioning@v3's create-delete-
-// create check) may need to run again rather than idempotently succeeding, since
-// there is no AlreadyExistsResult{} to fall back to in this SDK version.
+// is treated the same as a fresh create as long as the post-create lookup finds
+// an existing user with the *same* email address we were asked to create: both
+// return SuccessResult with the current resource. If the 409'd login belongs to
+// a different email, this is someone else's account - returning SuccessResult
+// would hand the caller access to it, so a status.Error(codes.AlreadyExists, ...)
+// is returned instead. If the lookup fails or finds nothing after a confirmed
+// 409, this also returns an error rather than fabricating a resource; on the
+// narrow case of a 409 immediately followed by a flaky lookup, a retry (e.g.
+// account-provisioning@v3's create-delete-create check) may need to run again
+// rather than idempotently succeeding, since there is no AlreadyExistsResult{}
+// to fall back to in this SDK version.
 func (u *userBuilder) CreateAccount(
 	ctx context.Context,
 	accountInfo *v2.AccountInfo,
@@ -186,7 +194,7 @@ func (u *userBuilder) CreateAccount(
 		login = accountInfo.GetLogin()
 	}
 	if login == "" {
-		return nil, nil, nil, fmt.Errorf("bitbucket(dc)-connector: create account: login is required")
+		return nil, nil, nil, uhttp.WrapErrors(codes.InvalidArgument, "bitbucket(dc)-connector: create account: login is required")
 	}
 
 	displayName, _, err := callerString(profileMap, "display_name")
@@ -194,7 +202,7 @@ func (u *userBuilder) CreateAccount(
 		return nil, nil, nil, err
 	}
 	if displayName == "" {
-		return nil, nil, nil, fmt.Errorf("bitbucket(dc)-connector: create account: display_name is required")
+		return nil, nil, nil, uhttp.WrapErrors(codes.InvalidArgument, "bitbucket(dc)-connector: create account: display_name is required")
 	}
 
 	email, _, err := callerString(profileMap, "email")
@@ -210,7 +218,12 @@ func (u *userBuilder) CreateAccount(
 		}
 	}
 	if email == "" {
-		return nil, nil, nil, fmt.Errorf("bitbucket(dc)-connector: create account: email is required")
+		return nil, nil, nil, uhttp.WrapErrors(codes.InvalidArgument, "bitbucket(dc)-connector: create account: email is required")
+	}
+
+	addToDefaultGroup, _, err := callerBool(profileMap, "add_to_default_group")
+	if err != nil {
+		return nil, nil, nil, err
 	}
 
 	password, err := generatePassword()
@@ -218,10 +231,7 @@ func (u *userBuilder) CreateAccount(
 		return nil, nil, nil, fmt.Errorf("bitbucket(dc)-connector: create account %s: generate password: %w", login, err)
 	}
 
-	// addToDefaultGroup is intentionally false: granting default-group membership
-	// is an entitlement concern (Grant/Revoke), not account creation.
-	err = u.client.CreateUser(ctx, login, password, displayName, email, false)
-	password = "" // never retained past the create call; never logged.
+	err = u.client.CreateUser(ctx, login, password, displayName, email, addToDefaultGroup)
 	alreadyExists := err != nil && client.IsAlreadyExistsError(err)
 	if err != nil && !alreadyExists {
 		return nil, nil, nil, fmt.Errorf("bitbucket(dc)-connector: create account %s: %w", login, err)
@@ -236,6 +246,13 @@ func (u *userBuilder) CreateAccount(
 	}
 	if fetched == nil {
 		return nil, nil, nil, fmt.Errorf("bitbucket(dc)-connector: create account %s: fetch after create: user not found", login)
+	}
+
+	// A 409 only means the login is idempotently ours if it belongs to the same email
+	// we were asked to create. Otherwise this is someone else's account, and adopting it
+	// would hand the caller access to a different person's identity.
+	if alreadyExists && !strings.EqualFold(fetched.EmailAddress, email) {
+		return nil, nil, nil, status.Error(codes.AlreadyExists, fmt.Sprintf("bitbucket(dc)-connector: create account: login %q already exists with a different email address", login))
 	}
 
 	resource, err := userResource(ctx, fetched, nil, nil)
@@ -264,7 +281,7 @@ func (u *userBuilder) Delete(ctx context.Context, resourceID *v2.ResourceId) (an
 		}
 		var bbErr *client.BitbucketError
 		if errors.As(err, &bbErr) && bbErr.ErrorSummary != "" {
-			return nil, fmt.Errorf("bitbucket(dc)-connector: delete user %s: %s: %s", resourceID.Resource, bbErr.Error(), bbErr.ErrorSummary)
+			return nil, fmt.Errorf("bitbucket(dc)-connector: delete user %s: %s: %w", resourceID.Resource, bbErr.ErrorSummary, err)
 		}
 		return nil, fmt.Errorf("bitbucket(dc)-connector: delete user %s: %w", resourceID.Resource, err)
 	}

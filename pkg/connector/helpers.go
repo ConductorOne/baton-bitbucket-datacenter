@@ -34,6 +34,25 @@ func callerString(profile map[string]any, key string) (string, bool, error) {
 	return value, true, nil
 }
 
+// callerBool mirrors callerString's semantics for boolean profile fields: absent means
+// the caller didn't set it (default to false), but present-with-the-wrong-type must fail
+// loudly rather than silently default, since that would substitute a value the admin
+// never asked for.
+func callerBool(profile map[string]any, key string) (bool, bool, error) {
+	raw, present := profile[key]
+	if !present || raw == nil {
+		return false, false, nil
+	}
+	value, ok := raw.(bool)
+	if !ok {
+		return false, true, uhttp.WrapErrors(
+			codes.InvalidArgument,
+			fmt.Sprintf("bitbucket(dc)-connector: invalid %s: expected a bool, got %T", key, raw),
+		)
+	}
+	return value, true, nil
+}
+
 // generatedPasswordLength is comfortably above Bitbucket Data Center's default
 // minimum password length policy.
 const generatedPasswordLength = 24
