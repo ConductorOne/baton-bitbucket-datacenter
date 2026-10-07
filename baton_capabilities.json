@@ -73,9 +73,9 @@
   "credentialDetails": {
     "capabilityAccountProvisioning": {
       "supportedCredentialOptions": [
-        "CAPABILITY_DETAIL_CREDENTIAL_OPTION_NO_PASSWORD"
+        "CAPABILITY_DETAIL_CREDENTIAL_OPTION_RANDOM_PASSWORD"
       ],
-      "preferredCredentialOption": "CAPABILITY_DETAIL_CREDENTIAL_OPTION_NO_PASSWORD"
+      "preferredCredentialOption": "CAPABILITY_DETAIL_CREDENTIAL_OPTION_RANDOM_PASSWORD"
     }
   }
 }

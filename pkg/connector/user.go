@@ -11,6 +11,7 @@ import (
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
 	"github.com/conductorone/baton-sdk/pkg/annotations"
 	"github.com/conductorone/baton-sdk/pkg/connectorbuilder"
+	"github.com/conductorone/baton-sdk/pkg/crypto"
 	"github.com/conductorone/baton-sdk/pkg/pagination"
 	rs "github.com/conductorone/baton-sdk/pkg/types/resource"
 	"github.com/conductorone/baton-sdk/pkg/uhttp"
@@ -140,18 +141,16 @@ func (u *userBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken 
 	return nil, "", nil, nil
 }
 
-// CreateAccountCapabilityDetails declares NO_PASSWORD: Bitbucket's create-user API
-// requires a password on every call, but the connector-generated value is never
-// returned to the caller as PlaintextData (see CreateAccount), so from the
-// platform/admin's perspective no usable credential comes out of this flow.
-// Advertising RANDOM_PASSWORD here would be dishonest - it implies a credential the
-// admin can retrieve, and none exists.
+// CreateAccountCapabilityDetails declares RANDOM_PASSWORD: Bitbucket's create-user API
+// requires a password on every call, so CreateAccount generates one from the caller's
+// CredentialOptions and returns it to the caller as PlaintextData on a fresh create,
+// giving the platform/admin a usable credential for the new account.
 func (u *userBuilder) CreateAccountCapabilityDetails(ctx context.Context) (*v2.CredentialDetailsAccountProvisioning, annotations.Annotations, error) {
 	return &v2.CredentialDetailsAccountProvisioning{
 		SupportedCredentialOptions: []v2.CapabilityDetailCredentialOption{
-			v2.CapabilityDetailCredentialOption_CAPABILITY_DETAIL_CREDENTIAL_OPTION_NO_PASSWORD,
+			v2.CapabilityDetailCredentialOption_CAPABILITY_DETAIL_CREDENTIAL_OPTION_RANDOM_PASSWORD,
 		},
-		PreferredCredentialOption: v2.CapabilityDetailCredentialOption_CAPABILITY_DETAIL_CREDENTIAL_OPTION_NO_PASSWORD,
+		PreferredCredentialOption: v2.CapabilityDetailCredentialOption_CAPABILITY_DETAIL_CREDENTIAL_OPTION_RANDOM_PASSWORD,
 	}, nil, nil
 }
 
@@ -178,7 +177,7 @@ func (u *userBuilder) CreateAccountCapabilityDetails(ctx context.Context) (*v2.C
 func (u *userBuilder) CreateAccount(
 	ctx context.Context,
 	accountInfo *v2.AccountInfo,
-	_ *v2.CredentialOptions,
+	credentialOptions *v2.CredentialOptions,
 ) (connectorbuilder.CreateAccountResponse, []*v2.PlaintextData, annotations.Annotations, error) {
 	l := ctxzap.Extract(ctx)
 	profileMap := accountInfo.GetProfile().AsMap()
@@ -226,9 +225,15 @@ func (u *userBuilder) CreateAccount(
 		return nil, nil, nil, err
 	}
 
-	password, err := generatePassword()
+	// crypto.GeneratePassword is nil-safe on credentialOptions (a nil receiver's
+	// GetRandomPassword() returns nil), so a missing or malformed CredentialOptions
+	// surfaces as ErrInvalidCredentialOptions / ErrInvalidPasswordLength here rather
+	// than a panic. Neither sentinel error can contain the password, since generation
+	// hasn't produced one yet when they're returned.
+	password, err := crypto.GeneratePassword(credentialOptions)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("bitbucket(dc)-connector: create account %s: generate password: %w", login, err)
+		return nil, nil, nil, uhttp.WrapErrors(codes.InvalidArgument,
+			fmt.Sprintf("bitbucket(dc)-connector: create account %s: generate password: %s", login, err))
 	}
 
 	err = u.client.CreateUser(ctx, login, password, displayName, email, addToDefaultGroup)
@@ -268,10 +273,24 @@ func (u *userBuilder) CreateAccount(
 		return nil, nil, nil, fmt.Errorf("bitbucket(dc)-connector: create account %s: %w", login, err)
 	}
 
+	// Only a fresh create actually set the generated password on the account. On the
+	// 409-same-email idempotent path, the existing user's password was never touched -
+	// returning the generated password as PlaintextData there would hand back a
+	// credential that does not work.
+	var plaintextData []*v2.PlaintextData
+	if !alreadyExists {
+		plaintextData = []*v2.PlaintextData{
+			{
+				Name:  "password",
+				Bytes: []byte(password),
+			},
+		}
+	}
+
 	return &v2.CreateAccountResponse_SuccessResult{
 		Resource:              resource,
 		IsCreateAccountResult: true,
-	}, nil, nil, nil
+	}, plaintextData, nil, nil
 }
 
 // Delete deprovisions a Bitbucket user account by deleting it.
