@@ -308,6 +308,13 @@ func (d *DataCenterClient) GetUserByName(ctx context.Context, name string) (*Use
 // request carries no browser session token (confirmed against a live Bitbucket Data Center
 // 8.9.4 instance - this is not documented on the endpoint's reference page).
 // https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-user-management/#api-admin-users-post
+//
+// password is sent as a query parameter, not in a request body: Atlassian's REST reference
+// documents all five parameters as query-only with no request body, and live testing against
+// 8.9.4 confirmed it - the endpoint returns 415 for a form-urlencoded body and silently ignores
+// a JSON body (reading only the query string either way). See
+// tickets/CXH-2372/live-validation-body-password-*.log for the evidence table. Callers/log
+// infrastructure in front of Bitbucket should treat this URL as sensitive (see README).
 func (d *DataCenterClient) CreateUser(ctx context.Context, name, password, displayName, emailAddress string, addToDefaultGroup bool) error {
 	uri, err := d.MakeURL(ctx, adminUsersEndpoint, map[string]string{
 		nameParam:           name,

@@ -161,6 +161,16 @@ When creating a new Bitbucket account, the connector generates a random password
 alone may not be enough for the new user to log in - enable the account creation form's "Add to
 default group" option, or separately grant the user permissions, to give it initial access.
 
+<Warning>
+Bitbucket's user-creation API (`POST /rest/api/latest/admin/users`) only accepts the generated
+password as a `password` query string parameter - there is no request body alternative on this
+endpoint (confirmed in Atlassian's REST API reference and by live testing against Bitbucket Data
+Center 8.9.4). Because the password travels in the URL, anything that logs full request URLs in
+front of Bitbucket - access logs, reverse proxies, load balancers - can record it. Require new
+users to change their password on first login, restrict access to logs/proxies in front of
+Bitbucket, and make sure TLS terminates as close to Bitbucket as possible.
+</Warning>
+
 See the connector's README or run `--help` to see all available configuration flags and environment variables.
 
 #### Deployment configuration
