@@ -156,6 +156,11 @@ instead (the connector rejects configuring a token and username/password at the 
   BATON_PROVISIONING: true
 ```
 
+When creating a new Bitbucket account, the connector generates a random password
+(RANDOM_PASSWORD) and returns it to C1 as the account's credential. Note that a working password
+alone may not be enough for the new user to log in - enable the account creation form's "Add to
+default group" option, or separately grant the user permissions, to give it initial access.
+
 See the connector's README or run `--help` to see all available configuration flags and environment variables.
 
 #### Deployment configuration

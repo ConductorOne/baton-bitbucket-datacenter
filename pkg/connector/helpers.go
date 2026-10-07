@@ -2,9 +2,7 @@ package connector
 
 import (
 	"context"
-	"crypto/rand"
 	"fmt"
-	"math/big"
 	"strconv"
 	"strings"
 
@@ -64,27 +62,6 @@ func callerBool(profile map[string]any, key string) (bool, bool, error) {
 		codes.InvalidArgument,
 		fmt.Sprintf("bitbucket(dc)-connector: invalid %s: expected a bool, got %T", key, raw),
 	)
-}
-
-// generatedPasswordLength is comfortably above Bitbucket Data Center's default
-// minimum password length policy.
-const generatedPasswordLength = 24
-
-// generatePassword returns a cryptographically random password used once to satisfy
-// Bitbucket's admin/users create endpoint, which requires a password on every create.
-// The value is never persisted or logged; the connector discards it immediately after
-// the create call.
-func generatePassword() (string, error) {
-	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*-_=+"
-	pw := make([]byte, generatedPasswordLength)
-	for i := range pw {
-		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(charset))))
-		if err != nil {
-			return "", err
-		}
-		pw[i] = charset[n.Int64()]
-	}
-	return string(pw), nil
 }
 
 func parseRepositoryID(id string) (string, string, error) {
