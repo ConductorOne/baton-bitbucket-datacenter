@@ -21,6 +21,11 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// generatePassword is a seam over crypto.GeneratePassword so tests can simulate the
+// non-sentinel error path (e.g. a crypto/rand failure), which the real implementation
+// only produces via the unfakeable system entropy source.
+var generatePassword = crypto.GeneratePassword
+
 func userResource(_ context.Context, user *client.User, parentResourceID *v2.ResourceId, opts []rs.UserTraitOption) (*v2.Resource, error) {
 	displayName := user.DisplayName
 	if displayName == "" {
@@ -229,10 +234,16 @@ func (u *userBuilder) CreateAccount(
 	// GetRandomPassword() returns nil), so a missing or malformed CredentialOptions
 	// surfaces as ErrInvalidCredentialOptions / ErrInvalidPasswordLength here rather
 	// than a panic. Neither sentinel error can contain the password, since generation
-	// hasn't produced one yet when they're returned.
-	password, err := crypto.GeneratePassword(credentialOptions)
+	// hasn't produced one yet when they're returned. Any other error (e.g. crypto/rand
+	// itself failing) is the caller's CredentialOptions being fine but generation
+	// failing regardless, so it maps to Internal rather than InvalidArgument.
+	password, err := generatePassword(credentialOptions)
 	if err != nil {
-		return nil, nil, nil, uhttp.WrapErrors(codes.InvalidArgument,
+		code := codes.Internal
+		if errors.Is(err, crypto.ErrInvalidCredentialOptions) || errors.Is(err, crypto.ErrInvalidPasswordLength) {
+			code = codes.InvalidArgument
+		}
+		return nil, nil, nil, uhttp.WrapErrors(code,
 			fmt.Sprintf("bitbucket(dc)-connector: create account %s: generate password: %s", login, err))
 	}
 

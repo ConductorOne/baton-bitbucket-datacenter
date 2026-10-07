@@ -3,6 +3,7 @@ package connector
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -420,6 +421,44 @@ func TestCreateAccount_CredentialOptions_InvalidArgument(t *testing.T) {
 				t.Fatalf("expected no PlaintextData on error, got %+v", plaintext)
 			}
 		})
+	}
+}
+
+// TestCreateAccount_GeneratePassword_Internal drives CreateAccount through a
+// non-sentinel generatePassword failure (e.g. crypto/rand itself failing, which the
+// real crypto.GeneratePassword has no way to simulate on demand) via the generatePassword
+// seam, and asserts it maps to codes.Internal rather than codes.InvalidArgument, and that
+// the error never leaks a password (there isn't one to leak: generation failed first).
+func TestCreateAccount_GeneratePassword_Internal(t *testing.T) {
+	srv := userServer(t, nil, nil, nil)
+	defer srv.Close()
+	u := newTestUserBuilder(t, srv)
+
+	original := generatePassword
+	wantErr := errors.New("crypto/rand: entropy source unavailable")
+	generatePassword = func(*v2.CredentialOptions) (string, error) {
+		return "", wantErr
+	}
+	defer func() { generatePassword = original }()
+
+	accountInfo := accountInfoFromProfile(t, map[string]any{
+		"login":        "jdoe",
+		"display_name": "Jane Doe",
+		"email":        "jane@example.com",
+	})
+
+	_, plaintext, _, err := u.CreateAccount(context.Background(), accountInfo, validCredentialOptions(24))
+	if err == nil {
+		t.Fatal("expected an error, got nil")
+	}
+	if code := status.Code(err); code != codes.Internal {
+		t.Fatalf("expected codes.Internal, got %s (%v)", code, err)
+	}
+	if !strings.Contains(err.Error(), wantErr.Error()) {
+		t.Fatalf("expected error to mention %q, got %v", wantErr, err)
+	}
+	if len(plaintext) != 0 {
+		t.Fatalf("expected no PlaintextData on error, got %+v", plaintext)
 	}
 }
 

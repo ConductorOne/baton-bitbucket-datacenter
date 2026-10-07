@@ -71,6 +71,20 @@ deleting Bitbucket users:
   external directory (e.g. LDAP, Crowd) cannot be deleted through this API; the connector surfaces
   a clear error in that case instead of silently failing.
 
+**The generated password is sent as a `password` query string parameter**, not in the
+request body. This is the only way Bitbucket's `POST /rest/api/latest/admin/users` endpoint
+accepts it: the [Atlassian REST API reference](https://developer.atlassian.com/server/bitbucket/rest/)
+documents `name`/`password`/`displayName`/`emailAddress`/`addToDefaultGroup` as query
+parameters with no request body, and live testing against Bitbucket Data Center 8.9.4 confirmed
+it - the endpoint returns 415 for a `application/x-www-form-urlencoded` body and silently ignores
+an `application/json` body (it only ever reads the query string). Because the password is in the
+URL, it can be recorded by anything that logs full request URLs in front of Bitbucket - access
+logs, reverse proxies, load balancers. To reduce exposure:
+  - Require the new user to change their password on first login.
+  - Restrict access to any logs or proxies that sit in front of this Bitbucket instance.
+  - Ensure TLS terminates as close to Bitbucket as possible so the URL isn't carried over
+    plaintext HTTP.
+
 These endpoints are under Bitbucket's `admin/` namespace and require credentials with at
 least the `ADMIN` (Administrator) global permission; `SYS_ADMIN` also works. `LICENSED_USER`
 is not sufficient and is rejected.
