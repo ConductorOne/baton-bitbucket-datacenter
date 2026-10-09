@@ -39,9 +39,57 @@ func (c *Connector) Asset(ctx context.Context, asset *v2.AssetRef) (string, io.R
 
 // Metadata returns metadata about the connector.
 func (c *Connector) Metadata(ctx context.Context) (*v2.ConnectorMetadata, error) {
+	addToDefaultGroupDefault := false
+
 	return &v2.ConnectorMetadata{
 		DisplayName: "Bitbucket Datacenter Connector",
 		Description: "Connector syncing users, groups, projects and repositories from Bitbucket Datacenter.",
+		AccountCreationSchema: &v2.ConnectorAccountCreationSchema{
+			FieldMap: map[string]*v2.ConnectorAccountCreationSchema_Field{
+				"login": {
+					DisplayName: "Username",
+					Required:    true,
+					Description: "The username for the new Bitbucket user.",
+					Field: &v2.ConnectorAccountCreationSchema_Field_StringField{
+						StringField: &v2.ConnectorAccountCreationSchema_StringField{},
+					},
+					Placeholder: "jdoe",
+					Order:       1,
+				},
+				"display_name": {
+					DisplayName: "Display Name",
+					Required:    true,
+					Description: "The display name for the new Bitbucket user.",
+					Field: &v2.ConnectorAccountCreationSchema_Field_StringField{
+						StringField: &v2.ConnectorAccountCreationSchema_StringField{},
+					},
+					Placeholder: "Jane Doe",
+					Order:       2,
+				},
+				"email": {
+					DisplayName: "Email",
+					Required:    true,
+					Description: "The email address for the new Bitbucket user.",
+					Field: &v2.ConnectorAccountCreationSchema_Field_StringField{
+						StringField: &v2.ConnectorAccountCreationSchema_StringField{},
+					},
+					Placeholder: "jane.doe@example.com",
+					Order:       3,
+				},
+				"add_to_default_group": {
+					DisplayName: "Add to default group",
+					Required:    false,
+					Description: "Whether the new user should be added to Bitbucket's default group. " +
+						"The default group controls the user's initial permissions and ability to log in.",
+					Field: &v2.ConnectorAccountCreationSchema_Field_BoolField{
+						BoolField: &v2.ConnectorAccountCreationSchema_BoolField{
+							DefaultValue: &addToDefaultGroupDefault,
+						},
+					},
+					Order: 4,
+				},
+			},
+		},
 	}, nil
 }
 

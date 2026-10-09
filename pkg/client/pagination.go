@@ -12,8 +12,8 @@ const ITEMSPERPAGE = 1000
 
 func pageTokenToQueryParams(pToken *pagination.Token) map[string]string {
 	queryParams := map[string]string{
-		"start": "0",
-		"limit": strconv.Itoa(ITEMSPERPAGE),
+		startParam: "0",
+		limitParam: strconv.Itoa(ITEMSPERPAGE),
 	}
 	if pToken == nil || pToken.Token == "" {
 		return queryParams
@@ -26,7 +26,7 @@ func pageTokenToQueryParams(pToken *pagination.Token) map[string]string {
 	}
 
 	if bag.PageToken() != "" {
-		queryParams["start"] = bag.PageToken()
+		queryParams[startParam] = bag.PageToken()
 	}
 
 	return queryParams

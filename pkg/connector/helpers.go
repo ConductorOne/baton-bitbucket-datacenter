@@ -3,14 +3,66 @@ package connector
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/conductorone/baton-bitbucket-datacenter/pkg/client"
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
 	"github.com/conductorone/baton-sdk/pkg/pagination"
+	"github.com/conductorone/baton-sdk/pkg/uhttp"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
+	"google.golang.org/grpc/codes"
 )
+
+// callerString separates "the caller omitted this field" (defaulting/fallback is
+// legitimate) from "the caller sent a value we can't read" (must fail - silently
+// defaulting would substitute a value the admin never asked for).
+func callerString(profile map[string]any, key string) (string, error) {
+	raw, present := profile[key]
+	if !present || raw == nil {
+		return "", nil
+	}
+	value, ok := raw.(string)
+	if !ok {
+		return "", uhttp.WrapErrors(
+			codes.InvalidArgument,
+			fmt.Sprintf("bitbucket(dc)-connector: invalid %s: expected a string, got %T", key, raw),
+		)
+	}
+	return value, nil
+}
+
+// callerBool mirrors callerString's semantics for boolean profile fields: absent means
+// the caller didn't set it (default to false), but present-with-the-wrong-type must fail
+// loudly rather than silently default, since that would substitute a value the admin
+// never asked for. A string is also accepted and parsed with strconv.ParseBool (after
+// trimming whitespace and lowercasing, so "True"/" true " work as well as "true"),
+// since some callers (e.g. CLI/form-driven invocations) can only send string profile
+// values; a string that doesn't parse as a bool still fails loudly rather than defaulting.
+func callerBool(profile map[string]any, key string) (bool, error) {
+	raw, present := profile[key]
+	if !present || raw == nil {
+		return false, nil
+	}
+	if value, ok := raw.(bool); ok {
+		return value, nil
+	}
+	if str, ok := raw.(string); ok {
+		value, err := strconv.ParseBool(strings.ToLower(strings.TrimSpace(str)))
+		if err != nil {
+			return false, uhttp.WrapErrors(
+				codes.InvalidArgument,
+				fmt.Sprintf("bitbucket(dc)-connector: invalid %s: cannot parse %q as a bool", key, str),
+			)
+		}
+		return value, nil
+	}
+	return false, uhttp.WrapErrors(
+		codes.InvalidArgument,
+		fmt.Sprintf("bitbucket(dc)-connector: invalid %s: expected a bool, got %T", key, raw),
+	)
+}
 
 func parseRepositoryID(id string) (string, string, error) {
 	parts := strings.Split(id, "/")
