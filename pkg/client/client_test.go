@@ -8,6 +8,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 const testPassword = "SuperSecretPassword123!@#"
@@ -116,6 +119,9 @@ func TestCreateUser_OtherError_NoPasswordLeak(t *testing.T) {
 	if bbErr.ErrorCode != http.StatusForbidden {
 		t.Fatalf("ErrorCode = %d, want %d", bbErr.ErrorCode, http.StatusForbidden)
 	}
+	if got := status.Code(err); got != codes.PermissionDenied {
+		t.Fatalf("status.Code(err) = %v, want %v", got, codes.PermissionDenied)
+	}
 }
 
 func TestDeleteUser(t *testing.T) {
@@ -124,11 +130,12 @@ func TestDeleteUser(t *testing.T) {
 		statusCode   int
 		wantErr      bool
 		wantNotFound bool
+		wantCode     codes.Code
 	}{
 		{name: "200 OK is success", statusCode: http.StatusOK, wantErr: false},
 		{name: "204 No Content is success", statusCode: http.StatusNoContent, wantErr: false},
-		{name: "404 Not Found reports IsNotFoundError", statusCode: http.StatusNotFound, wantErr: true, wantNotFound: true},
-		{name: "403 Forbidden is an error", statusCode: http.StatusForbidden, wantErr: true},
+		{name: "404 Not Found reports IsNotFoundError", statusCode: http.StatusNotFound, wantErr: true, wantNotFound: true, wantCode: codes.NotFound},
+		{name: "403 Forbidden is an error", statusCode: http.StatusForbidden, wantErr: true, wantCode: codes.PermissionDenied},
 	}
 
 	for _, tt := range tests {
@@ -152,6 +159,11 @@ func TestDeleteUser(t *testing.T) {
 			}
 			if tt.wantNotFound && !IsNotFoundError(err) {
 				t.Fatalf("expected IsNotFoundError to be true, got err: %v", err)
+			}
+			if tt.wantErr {
+				if got := status.Code(err); got != tt.wantCode {
+					t.Fatalf("status.Code(err) = %v, want %v", got, tt.wantCode)
+				}
 			}
 		})
 	}

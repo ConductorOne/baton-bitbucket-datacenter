@@ -15,6 +15,8 @@ import (
 	"github.com/conductorone/baton-sdk/pkg/pagination"
 	"github.com/conductorone/baton-sdk/pkg/uhttp"
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type DataCenterClient struct {
@@ -31,10 +33,20 @@ type BitbucketError struct {
 	ErrorLink        string                   `json:"errorLink,omitempty"`
 	ErrorId          string                   `json:"errorId,omitempty"`
 	ErrorCauses      []map[string]interface{} `json:"errorCauses,omitempty"`
+	Code             codes.Code               `json:"-"`
 }
 
 func (b *BitbucketError) Error() string {
 	return b.ErrorMessage
+}
+
+// GRPCStatus implements the interface grpc's status package looks for
+// (interface{ GRPCStatus() *status.Status }), via status.Code's errors.As
+// fallback - including through fmt.Errorf("%w", ...) wrapping. Without this,
+// every BitbucketError reached C1 as codes.Unknown regardless of the
+// underlying HTTP status, so a 503 and a 400 were indistinguishable.
+func (b *BitbucketError) GRPCStatus() *status.Status {
+	return status.New(b.Code, b.ErrorMessage)
 }
 
 // IsNotFoundError reports whether err represents an HTTP 404 Not Found response.
@@ -67,6 +79,35 @@ func IsNoSuchUserError(err error) bool {
 		return strings.Contains(bbErr.ErrorSummary, "NoSuchUserException")
 	}
 	return false
+}
+
+// httpStatusToGRPCCode maps a Bitbucket HTTP response status to the closest
+// gRPC code, so callers inspecting status.Code(err) see something more
+// specific than Unknown for every failure.
+func httpStatusToGRPCCode(statusCode int) codes.Code {
+	switch statusCode {
+	case http.StatusBadRequest:
+		return codes.InvalidArgument
+	case http.StatusUnauthorized:
+		return codes.Unauthenticated
+	case http.StatusForbidden:
+		return codes.PermissionDenied
+	case http.StatusNotFound:
+		return codes.NotFound
+	case http.StatusConflict:
+		return codes.AlreadyExists
+	case http.StatusTooManyRequests:
+		return codes.ResourceExhausted
+	case http.StatusNotImplemented:
+		return codes.Unimplemented
+	case http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return codes.Unavailable
+	default:
+		if statusCode >= 500 {
+			return codes.Internal
+		}
+		return codes.Unknown
+	}
 }
 
 // GET - http://{baseurl}/rest/api/latest/users
@@ -181,6 +222,7 @@ func GetCustomErr(req *http.Request, resp *http.Response, err error) *BitbucketE
 		return &BitbucketError{
 			ErrorMessage:     "Unknown error",
 			ErrorDescription: "request should not be nil",
+			Code:             codes.Internal,
 		}
 	}
 
@@ -188,10 +230,12 @@ func GetCustomErr(req *http.Request, resp *http.Response, err error) *BitbucketE
 		ErrorMessage:     err.Error(),
 		ErrorDescription: err.Error(),
 		ErrorLink:        req.URL.String(),
+		Code:             status.Code(err),
 	}
 
 	if resp != nil {
 		bbErr.ErrorCode = resp.StatusCode
+		bbErr.Code = httpStatusToGRPCCode(resp.StatusCode)
 		bodyBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
 			bbErr.ErrorSummary = fmt.Sprintf("Error reading response body %s", err.Error())
@@ -363,10 +407,10 @@ func (d *DataCenterClient) CreateUser(ctx context.Context, name, password, displ
 func sanitizeCreateUserError(err error) error {
 	var bbErr *BitbucketError
 	if !errors.As(err, &bbErr) {
-		return errors.New("create user: request failed")
+		return status.Error(status.Code(err), "create user: request failed")
 	}
 
-	sanitized := &BitbucketError{ErrorCode: bbErr.ErrorCode}
+	sanitized := &BitbucketError{ErrorCode: bbErr.ErrorCode, Code: bbErr.Code}
 	switch {
 	case bbErr.ErrorSummary != "":
 		sanitized.ErrorMessage = bbErr.ErrorSummary

@@ -737,6 +737,7 @@ func TestUserBuilder_Delete(t *testing.T) {
 		statusCode int
 		body       string
 		wantErr    bool
+		wantCode   codes.Code
 	}{
 		{
 			name:       "200 OK is success",
@@ -761,12 +762,14 @@ func TestUserBuilder_Delete(t *testing.T) {
 			statusCode: http.StatusNotFound,
 			body:       `{"errorSummary":"blocked by proxy"}`,
 			wantErr:    true,
+			wantCode:   codes.NotFound,
 		},
 		{
 			name:       "403 Forbidden is an error",
 			statusCode: http.StatusForbidden,
 			body:       `{"errors":[{"message":"user is managed by an external directory"}]}`,
 			wantErr:    true,
+			wantCode:   codes.PermissionDenied,
 		},
 	}
 
@@ -789,6 +792,11 @@ func TestUserBuilder_Delete(t *testing.T) {
 			}
 			if !tt.wantErr && err != nil {
 				t.Fatalf("unexpected error: %v", err)
+			}
+			if tt.wantErr {
+				if got := status.Code(err); got != tt.wantCode {
+					t.Fatalf("status.Code(err) = %v, want %v", got, tt.wantCode)
+				}
 			}
 		})
 	}
