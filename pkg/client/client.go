@@ -82,8 +82,15 @@ func IsNoSuchUserError(err error) bool {
 }
 
 // httpStatusToGRPCCode maps a Bitbucket HTTP response status to the closest
-// gRPC code, so callers inspecting status.Code(err) see something more
-// specific than Unknown for every failure.
+// gRPC code. Used only by CreateUser/DeleteUser (provisioning actions, never
+// part of the sync List/Entitlements/Grants loop) via the helpers below -
+// GetCustomErr itself always reports codes.Unknown for every other call,
+// since the vendored syncer treats codes.NotFound as a "skip this resource,
+// don't fail the sync" signal (pkg/sync/syncer.go's isWarning), and giving
+// every sync-path 404 that code would silently drop grants instead of
+// failing loudly. 429 maps to Unavailable (not ResourceExhausted) to match
+// what uhttp's own transport layer already does, since the sync retryer
+// only retries Unavailable/DeadlineExceeded.
 func httpStatusToGRPCCode(statusCode int) codes.Code {
 	switch statusCode {
 	case http.StatusBadRequest:
@@ -97,7 +104,7 @@ func httpStatusToGRPCCode(statusCode int) codes.Code {
 	case http.StatusConflict:
 		return codes.AlreadyExists
 	case http.StatusTooManyRequests:
-		return codes.ResourceExhausted
+		return codes.Unavailable
 	case http.StatusNotImplemented:
 		return codes.Unimplemented
 	case http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
@@ -108,6 +115,19 @@ func httpStatusToGRPCCode(statusCode int) codes.Code {
 		}
 		return codes.Unknown
 	}
+}
+
+// withProvisioningGRPCCode re-derives a BitbucketError's gRPC code from its
+// HTTP status, for CreateUser/DeleteUser only (see httpStatusToGRPCCode's
+// doc comment for why this isn't done globally in GetCustomErr). Returns
+// err unchanged if it isn't a *BitbucketError.
+func withProvisioningGRPCCode(err error) error {
+	var bbErr *BitbucketError
+	if !errors.As(err, &bbErr) {
+		return err
+	}
+	bbErr.Code = httpStatusToGRPCCode(bbErr.ErrorCode)
+	return bbErr
 }
 
 // GET - http://{baseurl}/rest/api/latest/users
@@ -230,12 +250,15 @@ func GetCustomErr(req *http.Request, resp *http.Response, err error) *BitbucketE
 		ErrorMessage:     err.Error(),
 		ErrorDescription: err.Error(),
 		ErrorLink:        req.URL.String(),
-		Code:             status.Code(err),
+		// Deliberately Unknown rather than status.Code(err): uhttp already tags
+		// err with a gRPC code derived from the HTTP status (404 -> NotFound),
+		// and surfacing that through GRPCStatus on sync-path calls would trip
+		// the syncer's isWarning skip. See httpStatusToGRPCCode.
+		Code: codes.Unknown,
 	}
 
 	if resp != nil {
 		bbErr.ErrorCode = resp.StatusCode
-		bbErr.Code = httpStatusToGRPCCode(resp.StatusCode)
 		bodyBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
 			bbErr.ErrorSummary = fmt.Sprintf("Error reading response body %s", err.Error())
@@ -410,7 +433,7 @@ func sanitizeCreateUserError(err error) error {
 		return status.Error(status.Code(err), "create user: request failed")
 	}
 
-	sanitized := &BitbucketError{ErrorCode: bbErr.ErrorCode, Code: bbErr.Code}
+	sanitized := &BitbucketError{ErrorCode: bbErr.ErrorCode, Code: httpStatusToGRPCCode(bbErr.ErrorCode)}
 	switch {
 	case bbErr.ErrorSummary != "":
 		sanitized.ErrorMessage = bbErr.ErrorSummary
@@ -442,7 +465,7 @@ func (d *DataCenterClient) DeleteUser(ctx context.Context, name string) error {
 
 	resp, err := d.Do(ctx, http.MethodDelete, uri, nil, nil, uhttp.WithHeader("X-Atlassian-Token", "no-check"))
 	if err != nil {
-		return err
+		return withProvisioningGRPCCode(err)
 	}
 	defer resp.Body.Close()
 
