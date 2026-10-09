@@ -55,6 +55,20 @@ func IsAlreadyExistsError(err error) bool {
 	return false
 }
 
+// IsNoSuchUserError reports whether err's response body names Bitbucket's
+// NoSuchUserException. A 404 alone is not a reliable signal that the user was
+// already deleted - a proxy/WAF sitting in front of /admin/* can also produce a
+// 404, and treating any 404 as success would then report a successful deprovision
+// for a user that is actually still there. Pair this with IsNotFoundError so only
+// Bitbucket's own "no such user" response is treated as already-deleted.
+func IsNoSuchUserError(err error) bool {
+	var bbErr *BitbucketError
+	if errors.As(err, &bbErr) {
+		return strings.Contains(bbErr.ErrorSummary, "NoSuchUserException")
+	}
+	return false
+}
+
 // GET - http://{baseurl}/rest/api/latest/users
 // GET - http://{baseurl}/rest/api/latest/projects
 // GET - http://{baseurl}/rest/api/latest/admin/groups

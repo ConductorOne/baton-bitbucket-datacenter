@@ -229,6 +229,66 @@ func TestCreateAccount(t *testing.T) {
 		}
 	})
 
+	// A fresh create (204) already set the generated password server-side, so a failed or
+	// empty post-create lookup must not discard it: CreateAccount still succeeds, building
+	// the resource from the known fields and returning the password as PlaintextData.
+	for _, tt := range []struct {
+		name   string
+		lookup func(w http.ResponseWriter)
+	}{
+		{name: "fresh create followed by an empty lookup still returns the password", lookup: func(w http.ResponseWriter) {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(client.UsersAPIData{IsLastPage: true})
+		}},
+		{name: "fresh create followed by a failed lookup still returns the password", lookup: func(w http.ResponseWriter) {
+			w.WriteHeader(http.StatusBadRequest)
+		}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var seenPassword string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch {
+				case r.Method == http.MethodPost && r.URL.Path == "/rest/api/latest/admin/users":
+					seenPassword = r.URL.Query().Get("password")
+					w.WriteHeader(http.StatusNoContent)
+				case r.Method == http.MethodGet && r.URL.Path == "/rest/api/latest/users":
+					tt.lookup(w)
+				default:
+					t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+				}
+			}))
+			defer srv.Close()
+			u := newTestUserBuilder(t, srv)
+
+			accountInfo := accountInfoFromProfile(t, map[string]any{
+				"login":        "jdoe",
+				"display_name": "Jane Doe",
+				"email":        "jane@example.com",
+			})
+
+			resp, plaintext, _, err := u.CreateAccount(context.Background(), accountInfo, validCredentialOptions(24))
+			if err != nil {
+				t.Fatalf("CreateAccount: %v", err)
+			}
+			success, ok := resp.(*v2.CreateAccountResponse_SuccessResult)
+			if !ok {
+				t.Fatalf("expected SuccessResult, got %T", resp)
+			}
+			if got := success.Resource.GetId().GetResource(); got != "jdoe" {
+				t.Fatalf("resource ID = %q, want %q", got, "jdoe")
+			}
+			if seenPassword == "" {
+				t.Fatal("expected the mock server to observe a generated password")
+			}
+			if len(plaintext) != 1 || plaintext[0].Name != "password" {
+				t.Fatalf("expected a single %q PlaintextData entry, got %+v", "password", plaintext)
+			}
+			if string(plaintext[0].Bytes) != seenPassword {
+				t.Fatalf("PlaintextData bytes = %q, want the password sent to Bitbucket %q", plaintext[0].Bytes, seenPassword)
+			}
+		})
+	}
+
 	t.Run("409 different email is AlreadyExists, no secrets", func(t *testing.T) {
 		existing := &client.User{Name: "jdoe", DisplayName: "Someone Else", EmailAddress: "someone.else@example.com", Active: true, Type: "NORMAL"}
 		var seenPassword string
@@ -675,12 +735,14 @@ func TestUserBuilder_Delete(t *testing.T) {
 	tests := []struct {
 		name       string
 		statusCode int
+		body       string
 		wantErr    bool
 	}{
-		{name: "200 OK is success", statusCode: http.StatusOK, wantErr: false},
-		{name: "204 No Content is success", statusCode: http.StatusNoContent, wantErr: false},
-		{name: "404 Not Found is treated as already-deleted success", statusCode: http.StatusNotFound, wantErr: false},
-		{name: "403 Forbidden is an error", statusCode: http.StatusForbidden, wantErr: true},
+		{name: "200 OK is success", statusCode: http.StatusOK, body: `{"errors":[{"message":"user is managed by an external directory"}]}`, wantErr: false},
+		{name: "204 No Content is success", statusCode: http.StatusNoContent, body: `{"errors":[{"message":"user is managed by an external directory"}]}`, wantErr: false},
+		{name: "404 Not Found is treated as already-deleted success", statusCode: http.StatusNotFound, body: `{"errorSummary":"com.atlassian.bitbucket.user.NoSuchUserException: User jdoe does not exist"}`, wantErr: false},
+		{name: "404 Not Found without NoSuchUserException is an error", statusCode: http.StatusNotFound, body: `{"errorSummary":"blocked by proxy"}`, wantErr: true},
+		{name: "403 Forbidden is an error", statusCode: http.StatusForbidden, body: `{"errors":[{"message":"user is managed by an external directory"}]}`, wantErr: true},
 	}
 
 	for _, tt := range tests {
@@ -690,7 +752,7 @@ func TestUserBuilder_Delete(t *testing.T) {
 					t.Fatalf("unexpected method: %s", r.Method)
 				}
 				w.WriteHeader(tt.statusCode)
-				_, _ = w.Write([]byte(`{"errors":[{"message":"user is managed by an external directory"}]}`))
+				_, _ = w.Write([]byte(tt.body))
 			}))
 			defer srv.Close()
 

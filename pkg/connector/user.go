@@ -178,7 +178,10 @@ func (u *userBuilder) CreateAccountCapabilityDetails(ctx context.Context) (*v2.C
 // narrow case of a 409 immediately followed by a flaky lookup, a retry (e.g.
 // account-provisioning@v3's create-delete-create check) may need to run again
 // rather than idempotently succeeding, since there is no AlreadyExistsResult{}
-// to fall back to in this SDK version.
+// to fall back to in this SDK version. After a fresh create (204), by contrast,
+// a failed or empty lookup is not fatal: the generated password is already set
+// server-side, so the resource is built from the known login/display name/email
+// and the password is still returned rather than discarding a successful create.
 func (u *userBuilder) CreateAccount(
 	ctx context.Context,
 	accountInfo *v2.AccountInfo,
@@ -190,7 +193,7 @@ func (u *userBuilder) CreateAccount(
 	// Precedence: the schema-declared profile field wins; GetLogin() is only the
 	// fallback, since it's C1's invitee login and can be populated even when the
 	// admin typed a different value into the schema's Username field.
-	login, _, err := callerString(profileMap, "login")
+	login, err := callerString(profileMap, "login")
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -201,7 +204,7 @@ func (u *userBuilder) CreateAccount(
 		return nil, nil, nil, uhttp.WrapErrors(codes.InvalidArgument, "bitbucket(dc)-connector: create account: login is required")
 	}
 
-	displayName, _, err := callerString(profileMap, "display_name")
+	displayName, err := callerString(profileMap, "display_name")
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -209,7 +212,7 @@ func (u *userBuilder) CreateAccount(
 		return nil, nil, nil, uhttp.WrapErrors(codes.InvalidArgument, "bitbucket(dc)-connector: create account: display_name is required")
 	}
 
-	email, _, err := callerString(profileMap, "email")
+	email, err := callerString(profileMap, "email")
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -225,7 +228,7 @@ func (u *userBuilder) CreateAccount(
 		return nil, nil, nil, uhttp.WrapErrors(codes.InvalidArgument, "bitbucket(dc)-connector: create account: email is required")
 	}
 
-	addToDefaultGroup, _, err := callerBool(profileMap, "add_to_default_group")
+	addToDefaultGroup, err := callerBool(profileMap, "add_to_default_group")
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -244,16 +247,15 @@ func (u *userBuilder) CreateAccount(
 			code = codes.InvalidArgument
 		}
 		return nil, nil, nil, uhttp.WrapErrors(code,
-			fmt.Sprintf("bitbucket(dc)-connector: create account %s: generate password: %s", login, err))
+			fmt.Sprintf("bitbucket(dc)-connector: create account %s: generate password", login), err)
 	}
 
 	err = u.client.CreateUser(ctx, login, password, displayName, email, addToDefaultGroup)
-	alreadyExists := err != nil && client.IsAlreadyExistsError(err)
-	if err != nil && !alreadyExists {
-		return nil, nil, nil, fmt.Errorf("bitbucket(dc)-connector: create account %s: %w", login, err)
-	}
+	alreadyExists := client.IsAlreadyExistsError(err)
 	if alreadyExists {
 		l.Debug("bitbucket(dc)-connector: create account: user already exists", zap.String("login", login))
+	} else if err != nil {
+		return nil, nil, nil, fmt.Errorf("bitbucket(dc)-connector: create account %s: %w", login, err)
 	}
 
 	// Bypass uhttp's in-memory GET cache (1h TTL): without this, a lookup moments after a
@@ -261,15 +263,33 @@ func (u *userBuilder) CreateAccount(
 	// response for the same filter=login URL, which would also make the 409 email guard
 	// below compare against stale data instead of the account that actually exists now.
 	if cacheErr := uhttp.ClearCaches(ctx); cacheErr != nil {
-		l.Warn("bitbucket(dc)-connector: create account: clear http cache", zap.Error(cacheErr))
+		l.Debug("bitbucket(dc)-connector: create account: clear http cache", zap.Error(cacheErr))
 	}
 
 	fetched, err := u.client.GetUserByName(ctx, login)
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("bitbucket(dc)-connector: create account %s: fetch after create: %w", login, err)
-	}
-	if fetched == nil {
-		return nil, nil, nil, fmt.Errorf("bitbucket(dc)-connector: create account %s: fetch after create: user not found", login)
+	if err != nil || fetched == nil {
+		if alreadyExists {
+			// Nothing to lose by failing here: the idempotent 409 path never set a
+			// password, and we need the fetched email for the identity-safety check
+			// right below.
+			if err != nil {
+				return nil, nil, nil, fmt.Errorf("bitbucket(dc)-connector: create account %s: fetch after create: %w", login, err)
+			}
+			return nil, nil, nil, fmt.Errorf("bitbucket(dc)-connector: create account %s: fetch after create: user not found", login)
+		}
+		// CreateUser already succeeded and set the generated password server-side.
+		// Failing here would report the create as failed while leaving a
+		// password-protected account that nobody - not C1, not this caller - knows
+		// the password for. Build the resource from what we already know instead of
+		// discarding a create that actually succeeded.
+		l.Debug("bitbucket(dc)-connector: create account: fetch after create failed, building resource from known fields",
+			zap.String("login", login), zap.Error(err))
+		fetched = &client.User{
+			Name:         login,
+			DisplayName:  displayName,
+			EmailAddress: email,
+			Active:       true,
+		}
 	}
 
 	// A 409 only means the login is idempotently ours if it belongs to the same email
@@ -314,7 +334,7 @@ func (u *userBuilder) CreateAccount(
 func (u *userBuilder) Delete(ctx context.Context, resourceID *v2.ResourceId) (annotations.Annotations, error) {
 	err := u.client.DeleteUser(ctx, resourceID.Resource)
 	if err != nil {
-		if client.IsNotFoundError(err) {
+		if client.IsNotFoundError(err) && client.IsNoSuchUserError(err) {
 			return nil, nil
 		}
 		var bbErr *client.BitbucketError

@@ -37,8 +37,8 @@ Configuring the connector requires you to pass in credentials generated in Bitbu
 	- Project: Admin
 	- Repository: Admin
 
-    This token is enough to sync data, but **not** to provision (create and delete) Bitbucket
-    user accounts. Verified live against Bitbucket Data Center 8.9.4: Project Admin + Repository
+    This token is enough to sync data and provision group/project/repo access, but **not** to
+    create or delete Bitbucket user accounts. Verified live against Bitbucket Data Center 8.9.4: Project Admin + Repository
     Admin is the maximum permission scope an HTTP access token can hold, and account
     create/delete still fail with a 401 `AuthorisationException` even when the token belongs to
     a `SYS_ADMIN` user - personal access tokens cannot exercise a user's global permissions in
@@ -139,6 +139,9 @@ stringData:
   # Bitbucket Data Center credentials
   BATON_BITBUCKETDC_BASEURL: <Full URL of your Bitbucket Data Center Server (such as http://localhost:7990)>
   BATON_BITBUCKETDC_TOKEN: <Bitbucket HTTP access token>
+
+  # Optional: include if you want C1 to provision group/project/repo access
+  BATON_PROVISIONING: true
 ```
 
 If you also want C1 to provision (create and delete) Bitbucket user accounts through this

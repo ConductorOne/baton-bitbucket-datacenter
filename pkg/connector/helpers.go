@@ -18,19 +18,19 @@ import (
 // callerString separates "the caller omitted this field" (defaulting/fallback is
 // legitimate) from "the caller sent a value we can't read" (must fail - silently
 // defaulting would substitute a value the admin never asked for).
-func callerString(profile map[string]any, key string) (string, bool, error) {
+func callerString(profile map[string]any, key string) (string, error) {
 	raw, present := profile[key]
 	if !present || raw == nil {
-		return "", false, nil
+		return "", nil
 	}
 	value, ok := raw.(string)
 	if !ok {
-		return "", true, uhttp.WrapErrors(
+		return "", uhttp.WrapErrors(
 			codes.InvalidArgument,
 			fmt.Sprintf("bitbucket(dc)-connector: invalid %s: expected a string, got %T", key, raw),
 		)
 	}
-	return value, true, nil
+	return value, nil
 }
 
 // callerBool mirrors callerString's semantics for boolean profile fields: absent means
@@ -40,25 +40,25 @@ func callerString(profile map[string]any, key string) (string, bool, error) {
 // trimming whitespace and lowercasing, so "True"/" true " work as well as "true"),
 // since some callers (e.g. CLI/form-driven invocations) can only send string profile
 // values; a string that doesn't parse as a bool still fails loudly rather than defaulting.
-func callerBool(profile map[string]any, key string) (bool, bool, error) {
+func callerBool(profile map[string]any, key string) (bool, error) {
 	raw, present := profile[key]
 	if !present || raw == nil {
-		return false, false, nil
+		return false, nil
 	}
 	if value, ok := raw.(bool); ok {
-		return value, true, nil
+		return value, nil
 	}
 	if str, ok := raw.(string); ok {
 		value, err := strconv.ParseBool(strings.ToLower(strings.TrimSpace(str)))
 		if err != nil {
-			return false, true, uhttp.WrapErrors(
+			return false, uhttp.WrapErrors(
 				codes.InvalidArgument,
 				fmt.Sprintf("bitbucket(dc)-connector: invalid %s: cannot parse %q as a bool", key, str),
 			)
 		}
-		return value, true, nil
+		return value, nil
 	}
-	return false, true, uhttp.WrapErrors(
+	return false, uhttp.WrapErrors(
 		codes.InvalidArgument,
 		fmt.Sprintf("bitbucket(dc)-connector: invalid %s: expected a bool, got %T", key, raw),
 	)
