@@ -289,6 +289,8 @@ func (u *userBuilder) CreateAccount(
 			DisplayName:  displayName,
 			EmailAddress: email,
 			Active:       true,
+			Type:         "NORMAL",
+			Slug:         strings.ToLower(login),
 		}
 	}
 
@@ -326,8 +328,11 @@ func (u *userBuilder) CreateAccount(
 
 // Delete deprovisions a Bitbucket user account by deleting it.
 //
-// A 404 (user already gone) is treated as success, since the C1 platform retries
-// deletes and a connector that errors on an already-deleted user fails every retry.
+// A 404 whose response body names Bitbucket's NoSuchUserException is treated as
+// already-deleted success, since the C1 platform retries deletes and a connector
+// that errors on an already-deleted user fails every retry. A 404 without that
+// marker (e.g. from a proxy/WAF in front of /admin/*) is surfaced as an error
+// instead, since it isn't a reliable signal that the user is actually gone.
 // Any other failure - notably a user managed by an external directory (LDAP/Crowd),
 // which Bitbucket refuses to delete through this API - is surfaced with the
 // upstream response body so the operator can see why the delete did not happen.
