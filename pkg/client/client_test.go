@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/conductorone/baton-sdk/pkg/pagination"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -164,6 +165,43 @@ func TestDeleteUser(t *testing.T) {
 				if got := status.Code(err); got != tt.wantCode {
 					t.Fatalf("status.Code(err) = %v, want %v", got, tt.wantCode)
 				}
+			}
+		})
+	}
+}
+
+// TestGetUsers_SyncPathErrorsAlwaysUnknown pins that generic sync-path calls (anything going
+// through d.Do -> GetCustomErr without a provisioning-specific code override) surface
+// codes.Unknown regardless of HTTP status. A status-derived code such as codes.NotFound would
+// make the syncer's isWarning treat the failure as "skip this resource" instead of failing
+// the sync. See GetCustomErr.
+func TestGetUsers_SyncPathErrorsAlwaysUnknown(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+	}{
+		{name: "404 Not Found", statusCode: http.StatusNotFound},
+		{name: "403 Forbidden", statusCode: http.StatusForbidden},
+		{name: "503 Service Unavailable", statusCode: http.StatusServiceUnavailable},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodGet {
+					t.Fatalf("unexpected method: %s", r.Method)
+				}
+				w.WriteHeader(tt.statusCode)
+			}))
+			defer srv.Close()
+
+			cli := newTestClient(t, srv)
+			_, _, err := cli.GetUsers(context.Background(), &pagination.Token{})
+			if err == nil {
+				t.Fatal("expected an error, got nil")
+			}
+			if got := status.Code(err); got != codes.Unknown {
+				t.Fatalf("status.Code(err) = %v, want %v (sync-path errors must stay Unknown, see GetCustomErr): %v", got, codes.Unknown, err)
 			}
 		})
 	}
