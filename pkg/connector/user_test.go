@@ -738,11 +738,36 @@ func TestUserBuilder_Delete(t *testing.T) {
 		body       string
 		wantErr    bool
 	}{
-		{name: "200 OK is success", statusCode: http.StatusOK, body: `{"errors":[{"message":"user is managed by an external directory"}]}`, wantErr: false},
-		{name: "204 No Content is success", statusCode: http.StatusNoContent, body: `{"errors":[{"message":"user is managed by an external directory"}]}`, wantErr: false},
-		{name: "404 Not Found is treated as already-deleted success", statusCode: http.StatusNotFound, body: `{"errorSummary":"com.atlassian.bitbucket.user.NoSuchUserException: User jdoe does not exist"}`, wantErr: false},
-		{name: "404 Not Found without NoSuchUserException is an error", statusCode: http.StatusNotFound, body: `{"errorSummary":"blocked by proxy"}`, wantErr: true},
-		{name: "403 Forbidden is an error", statusCode: http.StatusForbidden, body: `{"errors":[{"message":"user is managed by an external directory"}]}`, wantErr: true},
+		{
+			name:       "200 OK is success",
+			statusCode: http.StatusOK,
+			body:       `{"errors":[{"message":"user is managed by an external directory"}]}`,
+			wantErr:    false,
+		},
+		{
+			name:       "204 No Content is success",
+			statusCode: http.StatusNoContent,
+			body:       `{"errors":[{"message":"user is managed by an external directory"}]}`,
+			wantErr:    false,
+		},
+		{
+			name:       "404 Not Found is treated as already-deleted success",
+			statusCode: http.StatusNotFound,
+			body:       `{"errorSummary":"com.atlassian.bitbucket.user.NoSuchUserException: User jdoe does not exist"}`,
+			wantErr:    false,
+		},
+		{
+			name:       "404 Not Found without NoSuchUserException is an error",
+			statusCode: http.StatusNotFound,
+			body:       `{"errorSummary":"blocked by proxy"}`,
+			wantErr:    true,
+		},
+		{
+			name:       "403 Forbidden is an error",
+			statusCode: http.StatusForbidden,
+			body:       `{"errors":[{"message":"user is managed by an external directory"}]}`,
+			wantErr:    true,
+		},
 	}
 
 	for _, tt := range tests {
