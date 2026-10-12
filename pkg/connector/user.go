@@ -11,7 +11,7 @@ import (
 	rs "github.com/conductorone/baton-sdk/pkg/types/resource"
 )
 
-func userResource(_ context.Context, user *client.User, parentResourceID *v2.ResourceId, opts []rs.UserTraitOption) (*v2.Resource, error) {
+func userResource(_ context.Context, user *client.User, parentResourceID *v2.ResourceId, opts []rs.ResourceOption) (*v2.Resource, error) {
 	displayName := user.DisplayName
 	if displayName == "" {
 		displayName = user.Name
@@ -32,22 +32,15 @@ func userResource(_ context.Context, user *client.User, parentResourceID *v2.Res
 		"user_type":    user.Type,
 	}
 
-	userStatus := v2.UserTrait_Status_STATUS_ENABLED
-	switch user.Active {
-	case true:
-		userStatus = v2.UserTrait_Status_STATUS_ENABLED
-	case false:
-		userStatus = v2.UserTrait_Status_STATUS_DISABLED
+	userStatus := v2.Status_RESOURCE_STATUS_ENABLED
+	if !user.Active {
+		userStatus = v2.Status_RESOURCE_STATUS_DISABLED
 	}
 
 	userTraits := []rs.UserTraitOption{
-		rs.WithUserProfile(profile),
-		rs.WithStatus(userStatus),
 		rs.WithUserLogin(user.Name),
 		rs.WithEmail(user.EmailAddress, true),
 	}
-
-	userTraits = append(userTraits, opts...)
 
 	switch user.Type {
 	case "NORMAL":
@@ -61,7 +54,12 @@ func userResource(_ context.Context, user *client.User, parentResourceID *v2.Res
 		resourceTypeUser,
 		user.Name,
 		userTraits,
-		rs.WithParentResourceID(parentResourceID))
+		append([]rs.ResourceOption{
+			rs.WithResourceProfile(profile),
+			rs.WithResourceStatus(userStatus, ""),
+			rs.WithParentResourceID(parentResourceID),
+		}, opts...)...,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -102,13 +100,13 @@ func (u *userBuilder) List(ctx context.Context, parentResourceID *v2.ResourceId,
 
 	for _, usr := range users {
 		usrCopy := usr
-		opts := []rs.UserTraitOption{}
+		opts := []rs.ResourceOption{}
 
 		// TODO: This should be a set or map for better performance.
 		if len(u.userGroupFilter) > 0 && !slices.ContainsFunc(u.groupUsers, func(u client.User) bool {
 			return u.ID == usr.ID
 		}) {
-			opts = append(opts, rs.WithDetailedStatus(v2.UserTrait_Status_STATUS_DISABLED, "No Bitbucket license"))
+			opts = append(opts, rs.WithResourceStatus(v2.Status_RESOURCE_STATUS_DISABLED, "No Bitbucket license"))
 		}
 
 		ur, err := userResource(ctx, &usrCopy, parentResourceID, opts)
