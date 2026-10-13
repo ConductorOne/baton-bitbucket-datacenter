@@ -55,6 +55,15 @@ func assertNoPassword(t *testing.T, err error) {
 	}
 }
 
+// TestBitbucketError_GRPCStatus_ZeroValueIsUnknown pins that a BitbucketError built
+// without an explicit Code (codes.OK is the zero value) reports Unknown rather than OK.
+func TestBitbucketError_GRPCStatus_ZeroValueIsUnknown(t *testing.T) {
+	err := &BitbucketError{ErrorMessage: "boom"}
+	if got := status.Code(err); got != codes.Unknown {
+		t.Fatalf("status.Code(err) = %v, want %v", got, codes.Unknown)
+	}
+}
+
 func TestCreateUser_Success(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/"+adminUsersEndpoint {
@@ -100,6 +109,43 @@ func TestCreateUser_TransportTimeout_NoPasswordLeak(t *testing.T) {
 
 	err := cli.CreateUser(ctx, "jdoe", testPassword, "Jane Doe", "jane@example.com", false)
 	assertNoPassword(t, err)
+
+	// A transport error (no HTTP response at all) must still carry the code uhttp
+	// derived for it, not fall back to codes.Unknown.
+	if got := status.Code(err); got != codes.DeadlineExceeded {
+		t.Fatalf("status.Code(err) = %v, want %v", got, codes.DeadlineExceeded)
+	}
+}
+
+func TestCreateUser_200_and_201_AreSuccess(t *testing.T) {
+	for _, statusCode := range []int{http.StatusOK, http.StatusCreated} {
+		t.Run(http.StatusText(statusCode), func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(statusCode)
+			}))
+			defer srv.Close()
+
+			cli := newTestClient(t, srv)
+			if err := cli.CreateUser(context.Background(), "jdoe", testPassword, "Jane Doe", "jane@example.com", false); err != nil {
+				t.Fatalf("CreateUser: %v", err)
+			}
+		})
+	}
+}
+
+func TestCreateUser_5xx_MapsToUnavailable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	cli := newTestClient(t, srv)
+	err := cli.CreateUser(context.Background(), "jdoe", testPassword, "Jane Doe", "jane@example.com", false)
+	assertNoPassword(t, err)
+
+	if got := status.Code(err); got != codes.Unavailable {
+		t.Fatalf("status.Code(err) = %v, want %v", got, codes.Unavailable)
+	}
 }
 
 func TestCreateUser_OtherError_NoPasswordLeak(t *testing.T) {
@@ -137,6 +183,7 @@ func TestDeleteUser(t *testing.T) {
 		{name: "204 No Content is success", statusCode: http.StatusNoContent, wantErr: false},
 		{name: "404 Not Found reports IsNotFoundError", statusCode: http.StatusNotFound, wantErr: true, wantNotFound: true, wantCode: codes.NotFound},
 		{name: "403 Forbidden is an error", statusCode: http.StatusForbidden, wantErr: true, wantCode: codes.PermissionDenied},
+		{name: "503 Service Unavailable maps to Unavailable", statusCode: http.StatusServiceUnavailable, wantErr: true, wantCode: codes.Unavailable},
 	}
 
 	for _, tt := range tests {
