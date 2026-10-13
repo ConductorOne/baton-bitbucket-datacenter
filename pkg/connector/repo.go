@@ -39,13 +39,13 @@ func repositoryResource(_ context.Context, repository *client.Repos, parentResou
 		"repository_project_key": repository.Project.Key,
 	}
 
-	groupTraitOptions := []rs.GroupTraitOption{rs.WithGroupProfile(profile)}
 	displayName := fmt.Sprintf("%s/%s", repository.Project.Key, repository.Slug)
 	resource, err := rs.NewGroupResource(
 		displayName,
 		resourceTypeRepository,
 		makeRepositoryID(repository.Project.Key, repository.Slug),
-		groupTraitOptions,
+		nil,
+		rs.WithResourceProfile(profile),
 		rs.WithParentResourceID(parentResourceID),
 	)
 	if err != nil {
