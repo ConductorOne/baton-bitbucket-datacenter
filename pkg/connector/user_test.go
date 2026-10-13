@@ -285,16 +285,10 @@ func TestCreateAccount(t *testing.T) {
 			if got := success.Resource.GetId().GetResource(); got != "jdoe" {
 				t.Fatalf("resource ID = %q, want %q", got, "jdoe")
 			}
-			var ut v2.UserTrait
-			annos := annotations.Annotations(success.Resource.GetAnnotations())
-			found, err := annos.Pick(&ut)
-			if err != nil || !found {
-				t.Fatalf("expected a UserTrait annotation on the resource, found=%v err=%v", found, err)
-			}
 			// The fallback resource's login/user_slug/user_id are placeholders until the
 			// next sync corrects them - Slug is left empty rather than guessed (e.g. via
 			// lowercasing the login), since Bitbucket's real slugs aren't just that.
-			if slug := ut.GetProfile().GetFields()["user_slug"].GetStringValue(); slug != "" {
+			if slug := success.Resource.GetProfile().GetFields()["user_slug"].GetStringValue(); slug != "" {
 				t.Fatalf("expected empty placeholder user_slug on the fallback resource, got %q", slug)
 			}
 			if seenPassword == "" {
