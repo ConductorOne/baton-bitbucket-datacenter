@@ -277,6 +277,18 @@ func TestCreateAccount(t *testing.T) {
 			if got := success.Resource.GetId().GetResource(); got != "jdoe" {
 				t.Fatalf("resource ID = %q, want %q", got, "jdoe")
 			}
+			var ut v2.UserTrait
+			annos := annotations.Annotations(success.Resource.GetAnnotations())
+			found, err := annos.Pick(&ut)
+			if err != nil || !found {
+				t.Fatalf("expected a UserTrait annotation on the resource, found=%v err=%v", found, err)
+			}
+			// The fallback resource's login/user_slug/user_id are placeholders until the
+			// next sync corrects them - Slug is left empty rather than guessed (e.g. via
+			// lowercasing the login), since Bitbucket's real slugs aren't just that.
+			if slug := ut.GetProfile().GetFields()["user_slug"].GetStringValue(); slug != "" {
+				t.Fatalf("expected empty placeholder user_slug on the fallback resource, got %q", slug)
+			}
 			if seenPassword == "" {
 				t.Fatal("expected the mock server to observe a generated password")
 			}
@@ -378,37 +390,19 @@ func TestCreateAccount(t *testing.T) {
 		})
 	}
 
-	t.Run("add_to_default_group string true is accepted", func(t *testing.T) {
-		var seen string
-		srv := userServer(t, nil, &seen, nil)
-		defer srv.Close()
-		u := newTestUserBuilder(t, srv)
-
-		accountInfo := accountInfoFromProfile(t, map[string]any{
-			"login":                "jdoe",
-			"display_name":         "Jane Doe",
-			"email":                "jane@example.com",
-			"add_to_default_group": "true", // string, not bool
-		})
-
-		_, _, _, err := u.CreateAccount(context.Background(), accountInfo, validCredentialOptions(24))
-		if err != nil {
-			t.Fatalf("CreateAccount: %v", err)
-		}
-		if seen != "true" {
-			t.Fatalf("addToDefaultGroup query param = %q, want %q", seen, "true")
-		}
-	})
-
+	// The schema declares add_to_default_group as a bool, so a non-bool value can't
+	// reach here in practice; GetBoolValue() on a non-bool structpb.Value silently
+	// returns false rather than erroring, matching that guarantee.
 	for _, tt := range []struct {
 		name  string
 		value any
 	}{
-		{name: "add_to_default_group unparseable string is InvalidArgument", value: "yes-please"},
-		{name: "add_to_default_group wrong type is InvalidArgument", value: 123},
+		{name: "add_to_default_group non-bool string defaults to false", value: "true"},
+		{name: "add_to_default_group non-bool number defaults to false", value: 123},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			srv := userServer(t, nil, nil, nil)
+			var seen string
+			srv := userServer(t, nil, &seen, nil)
 			defer srv.Close()
 			u := newTestUserBuilder(t, srv)
 
@@ -419,12 +413,12 @@ func TestCreateAccount(t *testing.T) {
 				"add_to_default_group": tt.value,
 			})
 
-			_, _, _, err := u.CreateAccount(context.Background(), accountInfo, nil)
-			if err == nil {
-				t.Fatal("expected an error, got nil")
+			_, _, _, err := u.CreateAccount(context.Background(), accountInfo, validCredentialOptions(24))
+			if err != nil {
+				t.Fatalf("CreateAccount: %v", err)
 			}
-			if code := status.Code(err); code != codes.InvalidArgument {
-				t.Fatalf("expected codes.InvalidArgument, got %s (%v)", code, err)
+			if seen != "false" {
+				t.Fatalf("addToDefaultGroup query param = %q, want %q", seen, "false")
 			}
 		})
 	}

@@ -186,15 +186,12 @@ func (u *userBuilder) CreateAccount(
 	credentialOptions *v2.CredentialOptions,
 ) (connectorbuilder.CreateAccountResponse, []*v2.PlaintextData, annotations.Annotations, error) {
 	l := ctxzap.Extract(ctx)
-	profileMap := accountInfo.GetProfile().AsMap()
+	profile := accountInfo.GetProfile()
 
 	// Precedence: the schema-declared profile field wins; GetLogin() is only the
 	// fallback, since it's C1's invitee login and can be populated even when the
 	// admin typed a different value into the schema's Username field.
-	login, err := callerString(profileMap, "login")
-	if err != nil {
-		return nil, nil, nil, err
-	}
+	login, _ := rs.GetProfileStringValue(profile, "login")
 	if login == "" {
 		login = accountInfo.GetLogin()
 	}
@@ -202,18 +199,12 @@ func (u *userBuilder) CreateAccount(
 		return nil, nil, nil, uhttp.WrapErrors(codes.InvalidArgument, "bitbucket(dc)-connector: create account: login is required")
 	}
 
-	displayName, err := callerString(profileMap, "display_name")
-	if err != nil {
-		return nil, nil, nil, err
-	}
+	displayName, _ := rs.GetProfileStringValue(profile, "display_name")
 	if displayName == "" {
 		return nil, nil, nil, uhttp.WrapErrors(codes.InvalidArgument, "bitbucket(dc)-connector: create account: display_name is required")
 	}
 
-	email, err := callerString(profileMap, "email")
-	if err != nil {
-		return nil, nil, nil, err
-	}
+	email, _ := rs.GetProfileStringValue(profile, "email")
 	if email == "" {
 		for _, e := range accountInfo.GetEmails() {
 			if e.GetAddress() != "" {
@@ -226,10 +217,7 @@ func (u *userBuilder) CreateAccount(
 		return nil, nil, nil, uhttp.WrapErrors(codes.InvalidArgument, "bitbucket(dc)-connector: create account: email is required")
 	}
 
-	addToDefaultGroup, err := callerBool(profileMap, "add_to_default_group")
-	if err != nil {
-		return nil, nil, nil, err
-	}
+	addToDefaultGroup := profile.GetFields()["add_to_default_group"].GetBoolValue()
 
 	// crypto.GeneratePassword is nil-safe on credentialOptions (a nil receiver's
 	// GetRandomPassword() returns nil), so a missing or malformed CredentialOptions
@@ -282,13 +270,16 @@ func (u *userBuilder) CreateAccount(
 		// discarding a create that actually succeeded.
 		l.Debug("bitbucket(dc)-connector: create account: fetch after create failed, building resource from known fields",
 			zap.String("login", login), zap.Error(err))
+		// login/user_slug/user_id are placeholders until the next sync corrects them;
+		// the resource ID (user.Name) is accurate. Slug is left empty rather than
+		// guessed: Bitbucket's real slugs aren't just a lowercased name (e.g. "@"
+		// becomes "_", so jane@corp.com -> jane_corp.com).
 		fetched = &client.User{
 			Name:         login,
 			DisplayName:  displayName,
 			EmailAddress: email,
 			Active:       true,
 			Type:         "NORMAL",
-			Slug:         strings.ToLower(login),
 		}
 	}
 
