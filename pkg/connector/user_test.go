@@ -40,13 +40,14 @@ func accountInfoFromProfile(t *testing.T, profile map[string]any) *v2.AccountInf
 	return &v2.AccountInfo{Profile: s}
 }
 
-// validCredentialOptions returns CredentialOptions requesting a random password of the
-// given length, the shape C1 sends when CreateAccountCapabilityDetails advertises
+// validCredentialOptions returns LocalCredentialOptions requesting a random password of
+// the given length, the shape the SDK's builder converts C1's CredentialOptions into
+// before calling CreateAccount, when CreateAccountCapabilityDetails advertises
 // RANDOM_PASSWORD.
-func validCredentialOptions(length int64) *v2.CredentialOptions {
-	return &v2.CredentialOptions{
-		Options: &v2.CredentialOptions_RandomPassword_{
-			RandomPassword: &v2.CredentialOptions_RandomPassword{
+func validCredentialOptions(length int64) *v2.LocalCredentialOptions {
+	return &v2.LocalCredentialOptions{
+		Options: &v2.LocalCredentialOptions_RandomPassword_{
+			RandomPassword: &v2.LocalCredentialOptions_RandomPassword{
 				Length: length,
 			},
 		},
@@ -446,7 +447,7 @@ func TestUserBuilder_CreateAccountCapabilityDetails(t *testing.T) {
 func TestCreateAccount_CredentialOptions_InvalidArgument(t *testing.T) {
 	tests := []struct {
 		name              string
-		credentialOptions *v2.CredentialOptions
+		credentialOptions *v2.LocalCredentialOptions
 	}{
 		{name: "nil credential options", credentialOptions: nil},
 		{name: "random password length below minimum", credentialOptions: validCredentialOptions(7)},
@@ -490,7 +491,7 @@ func TestCreateAccount_GeneratePassword_Internal(t *testing.T) {
 
 	original := generatePassword
 	wantErr := errors.New("crypto/rand: entropy source unavailable")
-	generatePassword = func(*v2.CredentialOptions) (string, error) {
+	generatePassword = func(context.Context, *v2.LocalCredentialOptions) (string, error) {
 		return "", wantErr
 	}
 	defer func() { generatePassword = original }()

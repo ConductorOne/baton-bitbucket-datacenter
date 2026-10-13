@@ -183,7 +183,7 @@ func (u *userBuilder) CreateAccountCapabilityDetails(ctx context.Context) (*v2.C
 func (u *userBuilder) CreateAccount(
 	ctx context.Context,
 	accountInfo *v2.AccountInfo,
-	credentialOptions *v2.CredentialOptions,
+	credentialOptions *v2.LocalCredentialOptions,
 ) (connectorbuilder.CreateAccountResponse, []*v2.PlaintextData, annotations.Annotations, error) {
 	l := ctxzap.Extract(ctx)
 	profile := accountInfo.GetProfile()
@@ -226,7 +226,7 @@ func (u *userBuilder) CreateAccount(
 	// hasn't produced one yet when they're returned. Any other error (e.g. crypto/rand
 	// itself failing) is the caller's CredentialOptions being fine but generation
 	// failing regardless, so it maps to Internal rather than InvalidArgument.
-	password, err := generatePassword(credentialOptions)
+	password, err := generatePassword(ctx, credentialOptions)
 	if err != nil {
 		code := codes.Internal
 		if errors.Is(err, crypto.ErrInvalidCredentialOptions) || errors.Is(err, crypto.ErrInvalidPasswordLength) {
