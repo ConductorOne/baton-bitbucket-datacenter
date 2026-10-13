@@ -1,7 +1,9 @@
 package client
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +12,9 @@ import (
 	"time"
 
 	"github.com/conductorone/baton-sdk/pkg/pagination"
+	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -251,5 +256,70 @@ func TestGetUsers_SyncPathErrorsAlwaysUnknown(t *testing.T) {
 				t.Fatalf("status.Code(err) = %v, want %v (sync-path errors must stay Unknown, see GetCustomErr): %v", got, codes.Unknown, err)
 			}
 		})
+	}
+}
+
+// TestCreateUser_DoesNotLogPassword drives CreateUser through a real zap logger (wired
+// the same way production does, via ctxzap) and asserts the generated password never
+// reaches it, across a success and two error responses. It also drives GetUsers through
+// the same logger to prove the client's logging is actually wired up, so the absence of
+// the password above isn't just an artifact of nothing being logged at all.
+func TestCreateUser_DoesNotLogPassword(t *testing.T) {
+	const probePassword = "S3cr3t-Probe-Pw" //nolint:gosec // test fixture, not a real credential
+
+	var buf bytes.Buffer
+	core := zapcore.NewCore(
+		zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig()),
+		zapcore.Lock(zapcore.AddSync(&buf)),
+		zapcore.DebugLevel,
+	)
+	logger := zap.New(core)
+	ctx := ctxzap.ToContext(context.Background(), logger)
+
+	for _, tt := range []struct {
+		name       string
+		statusCode int
+	}{
+		{name: "204 success", statusCode: http.StatusNoContent},
+		{name: "409 conflict", statusCode: http.StatusConflict},
+		{name: "500 server error", statusCode: http.StatusInternalServerError},
+	} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(tt.statusCode)
+		}))
+		defer srv.Close()
+
+		cli, err := New(ctx, srv.URL, &Auth{Username: "admin", Password: "admin-pw"})
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+
+		// Error is expected for 409/500; only the log output is under test here.
+		_ = cli.CreateUser(ctx, "jdoe", probePassword, "Jane Doe", "jane@example.com", false)
+
+		if strings.Contains(buf.String(), probePassword) {
+			t.Fatalf("%s: password leaked into logs:\n%s", tt.name, buf.String())
+		}
+	}
+
+	// A normal, logged request must still produce log output through the same logger,
+	// proving the logger is actually wired and the assertions above aren't vacuous.
+	usersSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(UsersAPIData{IsLastPage: true})
+	}))
+	defer usersSrv.Close()
+
+	cli, err := New(ctx, usersSrv.URL, &Auth{Username: "admin", Password: "admin-pw"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	preLen := buf.Len()
+	if _, _, err := cli.GetUsers(ctx, &pagination.Token{}); err != nil {
+		t.Fatalf("GetUsers: %v", err)
+	}
+	if buf.Len() == preLen {
+		t.Fatal("expected GetUsers to produce log output, but the logger stayed silent")
 	}
 }

@@ -20,9 +20,15 @@ import (
 )
 
 type DataCenterClient struct {
-	auth       *Auth
+	auth *Auth
+	// httpClient logs every request (including the URL and query string) and is used
+	// for all calls except CreateUser.
 	httpClient *uhttp.BaseHttpClient
-	baseUrl    string
+	// createUserHTTPClient is otherwise identical to httpClient but has request logging
+	// disabled, since CreateUser sends the generated password as a query parameter and
+	// the SDK transport logs req.URL.RawQuery on every call.
+	createUserHTTPClient *uhttp.BaseHttpClient
+	baseUrl              string
 }
 
 type BitbucketError struct {
@@ -188,15 +194,31 @@ func New(ctx context.Context, baseUrl string, auth *Auth) (*DataCenterClient, er
 	if err != nil {
 		return nil, err
 	}
+
+	// Same transport options as above, except logging is off: see the
+	// createUserHTTPClient field comment.
+	createUserHTTPClient, err := uhttp.NewClient(ctx,
+		uhttp.WithLogger(false, ctxzap.Extract(ctx)),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	createUserCli, err := uhttp.NewBaseHttpClientWithContext(ctx, createUserHTTPClient)
+	if err != nil {
+		return nil, err
+	}
+
 	if !isValidUrl(baseUrl) {
 		return nil, fmt.Errorf("the url : %s is not valid", baseUrl)
 	}
 
 	// basic authentication or bearerToken
 	dc := DataCenterClient{
-		httpClient: cli,
-		baseUrl:    baseUrl,
-		auth:       auth,
+		httpClient:           cli,
+		createUserHTTPClient: createUserCli,
+		baseUrl:              baseUrl,
+		auth:                 auth,
 	}
 
 	return &dc, nil
@@ -256,6 +278,20 @@ func (d *DataCenterClient) MakeURL(ctx context.Context, path string, queryParams
 }
 
 func (d *DataCenterClient) Do(ctx context.Context, method string, uri *url.URL, body interface{}, response interface{}, reqOptions ...uhttp.RequestOption) (*http.Response, error) {
+	return d.doWithClient(ctx, d.httpClient, method, uri, body, response, reqOptions...)
+}
+
+// doWithClient is Do's implementation, parameterized on which base client issues the
+// request so CreateUser can route through createUserHTTPClient instead.
+func (d *DataCenterClient) doWithClient(
+	ctx context.Context,
+	httpClient *uhttp.BaseHttpClient,
+	method string,
+	uri *url.URL,
+	body interface{},
+	response interface{},
+	reqOptions ...uhttp.RequestOption,
+) (*http.Response, error) {
 	reqOptions = append(reqOptions,
 		uhttp.WithAcceptJSONHeader(),
 		d.WithAuthorization(),
@@ -269,12 +305,12 @@ func (d *DataCenterClient) Do(ctx context.Context, method string, uri *url.URL, 
 		doOptions = append(doOptions, uhttp.WithJSONResponse(response))
 	}
 
-	req, err := d.httpClient.NewRequest(ctx, method, uri, reqOptions...)
+	req, err := httpClient.NewRequest(ctx, method, uri, reqOptions...)
 	if err != nil {
 		return nil, GetCustomErr(req, nil, err)
 	}
 
-	resp, err := d.httpClient.Do(req, doOptions...)
+	resp, err := httpClient.Do(req, doOptions...)
 	if err != nil {
 		return nil, GetCustomErr(req, resp, err)
 	}
@@ -366,7 +402,10 @@ func (d *DataCenterClient) CreateUser(ctx context.Context, name, password, displ
 		return err
 	}
 
-	resp, err := d.Do(ctx, http.MethodPost, uri, nil, nil, uhttp.WithHeader("X-Atlassian-Token", "no-check"))
+	// Routed through createUserHTTPClient (logging disabled): the password above is a
+	// query parameter, and the logged client would otherwise write it to logs via uhttp's
+	// request-logging transport.
+	resp, err := d.doWithClient(ctx, d.createUserHTTPClient, http.MethodPost, uri, nil, nil, uhttp.WithHeader("X-Atlassian-Token", "no-check"))
 	if err != nil {
 		return sanitizeCreateUserError(err)
 	}
