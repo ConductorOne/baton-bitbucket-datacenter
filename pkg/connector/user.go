@@ -162,24 +162,23 @@ func (u *userBuilder) CreateAccountCapabilityDetails(ctx context.Context) (*v2.C
 // POST /rest/api/latest/admin/users returns 204 No Content on success, so the
 // created user is fetched afterward (by name) to build the resulting resource.
 //
-// The baton-sdk version vendored by this connector (v0.3.8) only defines
-// Success and ActionRequired branches on CreateAccountResponse - there is no
-// AlreadyExists result type to return for a 409. To keep CreateAccount
-// idempotent (never error on "already exists") within that constraint, a 409
-// is treated the same as a fresh create as long as the post-create lookup finds
-// an existing user with the *same* email address we were asked to create: both
-// return SuccessResult with the current resource. If the 409'd login belongs to
-// a different email, this is someone else's account - returning SuccessResult
-// would hand the caller access to it, so a status.Error(codes.AlreadyExists, ...)
-// is returned instead. If the lookup fails or finds nothing after a confirmed
-// 409, this also returns an error rather than fabricating a resource; on the
-// narrow case of a 409 immediately followed by a flaky lookup, a retry (e.g.
-// account-provisioning@v3's create-delete-create check) may need to run again
-// rather than idempotently succeeding, since there is no AlreadyExistsResult{}
-// to fall back to in this SDK version. After a fresh create (204), by contrast,
-// a failed or empty lookup is not fatal: the generated password is already set
-// server-side, so the resource is built from the known login/display name/email
-// and the password is still returned rather than discarding a successful create.
+// A 409 (login already taken) is resolved against that post-create lookup by
+// email, since Bitbucket usernames are unique but emails are not:
+//   - Same email as requested: the login is idempotently ours, so this returns
+//     AlreadyExistsResult{Resource: resource} - no plaintext data (the existing
+//     user's password was never touched) and no IsCreateAccountResult (the SDK
+//     type-switches on the result type itself).
+//   - Different email: this is someone else's account under the same login,
+//     and adopting it would hand the caller access to a different person's
+//     identity, so this returns status.Error(codes.AlreadyExists, ...).
+//   - Lookup fails or finds nothing: identity cannot be verified either way,
+//     so this returns an error rather than guessing.
+//
+// A fresh create (204) always returns SuccessResult with the generated
+// password as PlaintextData. A failed or empty lookup in that path is not
+// fatal: the generated password is already set server-side, so the resource
+// is built from the known login/display name/email and the password is still
+// returned rather than discarding a successful create.
 func (u *userBuilder) CreateAccount(
 	ctx context.Context,
 	accountInfo *v2.AccountInfo,
@@ -283,9 +282,10 @@ func (u *userBuilder) CreateAccount(
 		}
 	}
 
-	// A 409 only means the login is idempotently ours if it belongs to the same email
-	// we were asked to create. Otherwise this is someone else's account, and adopting it
-	// would hand the caller access to a different person's identity.
+	// Deliberate exception: Bitbucket usernames are unique but emails are NOT (verified
+	// live against Bitbucket DC 8.9.4: a second user with the same email is created
+	// fine), so a username match with a different email is another person's account
+	// and must never be adopted.
 	if alreadyExists && !strings.EqualFold(fetched.EmailAddress, email) {
 		return nil, nil, nil, status.Error(codes.AlreadyExists, fmt.Sprintf("bitbucket(dc)-connector: create account: login %q already exists with a different email address", login))
 	}
@@ -295,24 +295,24 @@ func (u *userBuilder) CreateAccount(
 		return nil, nil, nil, fmt.Errorf("bitbucket(dc)-connector: create account %s: %w", login, err)
 	}
 
-	// Only a fresh create actually set the generated password on the account. On the
-	// 409-same-email idempotent path, the existing user's password was never touched -
-	// returning the generated password as PlaintextData there would hand back a
-	// credential that does not work.
-	var plaintextData []*v2.PlaintextData
-	if !alreadyExists {
-		plaintextData = []*v2.PlaintextData{
-			{
-				Name:  "password",
-				Bytes: []byte(password),
-			},
-		}
+	if alreadyExists {
+		// The existing user's password was never touched, so there is no plaintext data
+		// to return; IsCreateAccountResult is not set here, as the SDK type-switches on
+		// the result type itself to distinguish AlreadyExists from Success.
+		return &v2.CreateAccountResponse_AlreadyExistsResult{
+			Resource: resource,
+		}, nil, nil, nil
 	}
 
 	return &v2.CreateAccountResponse_SuccessResult{
 		Resource:              resource,
 		IsCreateAccountResult: true,
-	}, plaintextData, nil, nil
+	}, []*v2.PlaintextData{
+		{
+			Name:  "password",
+			Bytes: []byte(password),
+		},
+	}, nil, nil
 }
 
 // Delete deprovisions a Bitbucket user account by deleting it.

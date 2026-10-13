@@ -152,7 +152,7 @@ func TestCreateAccount(t *testing.T) {
 		}
 	})
 
-	t.Run("409 same email is idempotent success", func(t *testing.T) {
+	t.Run("409 same email is idempotent AlreadyExists", func(t *testing.T) {
 		existing := &client.User{Name: "jdoe", DisplayName: "Jane Doe", EmailAddress: "Jane@Example.com", Active: true, Type: "NORMAL"}
 		srv := userServer(t, existing, nil, nil)
 		defer srv.Close()
@@ -168,18 +168,25 @@ func TestCreateAccount(t *testing.T) {
 		if err != nil {
 			t.Fatalf("CreateAccount: %v", err)
 		}
-		if _, ok := resp.(*v2.CreateAccountResponse_SuccessResult); !ok {
-			t.Fatalf("expected SuccessResult, got %T", resp)
+		already, ok := resp.(*v2.CreateAccountResponse_AlreadyExistsResult)
+		if !ok {
+			t.Fatalf("expected AlreadyExistsResult, got %T", resp)
+		}
+		if already.Resource == nil {
+			t.Fatal("expected a resource on AlreadyExistsResult")
+		}
+		if already.IsCreateAccountResult {
+			t.Fatal("expected IsCreateAccountResult unset on AlreadyExistsResult; the SDK type-switches on the result type itself")
 		}
 		// The existing account's password was never touched on this idempotent 409 path -
 		// returning the freshly generated (and unused) password here would hand back a
 		// credential that does not actually work.
 		if len(plaintext) != 0 {
-			t.Fatalf("expected no PlaintextData on a 409 idempotent success, got %+v", plaintext)
+			t.Fatalf("expected no PlaintextData on a 409 idempotent AlreadyExists, got %+v", plaintext)
 		}
 	})
 
-	t.Run("409 case-insensitive login match with same email is idempotent success", func(t *testing.T) {
+	t.Run("409 case-insensitive login match with same email is idempotent AlreadyExists", func(t *testing.T) {
 		existing := &client.User{Name: "jdoe", DisplayName: "Jane Doe", EmailAddress: "jane@example.com", Active: true, Type: "NORMAL"}
 		srv := userServer(t, existing, nil, nil)
 		defer srv.Close()
@@ -195,8 +202,8 @@ func TestCreateAccount(t *testing.T) {
 		if err != nil {
 			t.Fatalf("CreateAccount: %v", err)
 		}
-		if _, ok := resp.(*v2.CreateAccountResponse_SuccessResult); !ok {
-			t.Fatalf("expected SuccessResult, got %T", resp)
+		if _, ok := resp.(*v2.CreateAccountResponse_AlreadyExistsResult); !ok {
+			t.Fatalf("expected AlreadyExistsResult, got %T", resp)
 		}
 	})
 
