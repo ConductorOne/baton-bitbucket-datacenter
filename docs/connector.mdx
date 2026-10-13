@@ -38,19 +38,11 @@ Configuring the connector requires you to pass in credentials generated in Bitbu
 	- Repository: Admin
 
     This token is enough to sync data and provision group/project/repo access, but **not** to
-    create or delete Bitbucket user accounts. Verified live against Bitbucket Data Center 8.9.4: Project Admin + Repository
-    Admin is the maximum permission scope an HTTP access token can hold, and account
-    create/delete still fail with a 401 `AuthorisationException` even when the token belongs to
-    a `SYS_ADMIN` user - personal access tokens cannot exercise a user's global permissions in
-    Bitbucket Server. If you want C1 to provision accounts through this connector, skip the
-    token and instead configure the connector with a username and password (basic auth) for a
-    user with the global **Administrator** (`ADMIN`) permission; `SYS_ADMIN` also works. The
-    `LICENSED_USER` permission is not sufficient, and a token cannot be combined with
-    username/password - the connector rejects configuring both at once.
+    create or delete Bitbucket user accounts.
 
-    When creating an account, you can optionally set **Add to default group**, which adds
-    the new user to Bitbucket's default group. The default group controls the user's
-    initial permissions and ability to log in; it defaults to off.
+    <Note>
+    Account provisioning (creating and deleting users) is not supported when the connector is configured with an HTTP access token. To provision accounts, configure the connector with a username and password for a user with the global **Administrator** (`ADMIN`) or **System Administrator** (`SYS_ADMIN`) permission. You can't configure both a token and a username/password.
+    </Note>
     </Step>
     <Step>
     Click **Create**.
@@ -61,6 +53,18 @@ Configuring the connector requires you to pass in credentials generated in Bitbu
 </Steps>
 
 **Done.** Next, move on to the connector configuration instructions.
+
+### (Optional) Credentials for account provisioning
+
+Account provisioning (creating and deleting Bitbucket users) requires a username and password
+for a user with the global **Administrator** (`ADMIN`) or **System Administrator**
+(`SYS_ADMIN`) permission - an HTTP access token can't be used for this. A token and a
+username/password are mutually exclusive; the connector rejects configuring both at once.
+Token users still need `BATON_PROVISIONING` enabled to provision group/project/repo access.
+
+When creating an account, you can optionally set **Add to default group**, which adds
+the new user to Bitbucket's default group. The default group controls the user's
+initial permissions and ability to log in; it defaults to off.
 
 ## Configure the Bitbucket Data Center connector
 
@@ -164,14 +168,21 @@ When creating a new Bitbucket account, the connector generates a random password
 alone may not be enough for the new user to log in - enable the account creation form's "Add to
 default group" option, or separately grant the user permissions, to give it initial access.
 
+If a create is treated as already existing (a 409 for the same username and email), no
+credential is returned, since the existing account's password was never touched. If the
+original password was never delivered to anyone, an administrator must set a new password for
+the account (**Administration** > **Users** > the user > **Change password**) or delete and
+re-create the account.
+
 <Warning>
 Bitbucket's user-creation API (`POST /rest/api/latest/admin/users`) only accepts the generated
 password as a `password` query string parameter - there is no request body alternative on this
 endpoint (confirmed in Atlassian's REST API reference and by live testing against Bitbucket Data
 Center 8.9.4). Because the password travels in the URL, anything that logs full request URLs in
-front of Bitbucket - access logs, reverse proxies, load balancers - can record it. Require new
-users to change their password on first login, restrict access to logs/proxies in front of
-Bitbucket, and make sure TLS terminates as close to Bitbucket as possible.
+front of Bitbucket - access logs, reverse proxies, load balancers - can record it. Ask the new
+user to change their password after first login, or change it as an administrator; restrict
+access to logs/proxies in front of Bitbucket; and make sure TLS terminates as close to Bitbucket
+as possible.
 </Warning>
 
 See the connector's README or run `--help` to see all available configuration flags and environment variables.

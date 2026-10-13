@@ -66,6 +66,9 @@ deleting Bitbucket users:
   account its initial access. Creating an account for a username that already exists is treated as
   a successful no-op only if the existing user has the same email address that was requested; if
   the email differs, the existing account belongs to someone else and the request fails instead.
+  If the original password was never delivered to anyone, an administrator must set a new
+  password for the account (**Administration** > **Users** > the user > **Change password**) or
+  delete and re-create the account.
 - **Delete account**: deletes a Bitbucket user (`DELETE /rest/api/latest/admin/users?name=`).
   Deleting a user that no longer exists is treated as a successful no-op. Users managed by an
   external directory (e.g. LDAP, Crowd) cannot be deleted through this API; the connector surfaces
@@ -80,7 +83,7 @@ it - the endpoint returns 415 for a `application/x-www-form-urlencoded` body and
 an `application/json` body (it only ever reads the query string). Because the password is in the
 URL, it can be recorded by anything that logs full request URLs in front of Bitbucket - access
 logs, reverse proxies, load balancers. To reduce exposure:
-  - Require the new user to change their password on first login.
+  - Ask the new user to change their password after first login, or change it as an administrator.
   - Restrict access to any logs or proxies that sit in front of this Bitbucket instance.
   - Ensure TLS terminates as close to Bitbucket as possible so the URL isn't carried over
     plaintext HTTP.
