@@ -302,6 +302,32 @@ func TestCreateUser_DoesNotLogPassword(t *testing.T) {
 		}
 	}
 
+	// Transport-error case: a closed server fails the request before any HTTP response
+	// exists. This is the case the transport logger flag doesn't gate: BaseHttpClient.Do
+	// logs the raw *url.Error unconditionally, and that error's text carries the request
+	// URL, including the password query parameter.
+	transportSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	transportSrv.Close()
+
+	transportCli, err := New(ctx, transportSrv.URL, &Auth{Username: "admin", Password: "admin-pw"})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	transportErr := transportCli.CreateUser(ctx, "jdoe", probePassword, "Jane Doe", "jane@example.com", false)
+	if transportErr == nil {
+		t.Fatal("expected a transport error from a closed server")
+	}
+	if strings.Contains(buf.String(), probePassword) {
+		t.Fatalf("transport error: password leaked into logs:\n%s", buf.String())
+	}
+	if strings.Contains(transportErr.Error(), probePassword) {
+		t.Fatalf("transport error: password leaked into returned error: %v", transportErr)
+	}
+	if strings.Contains(transportErr.Error(), transportSrv.URL) {
+		t.Fatalf("transport error: request URL leaked into returned error: %v", transportErr)
+	}
+
 	// A normal, logged request must still produce log output through the same logger,
 	// proving the logger is actually wired and the assertions above aren't vacuous.
 	usersSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -24,9 +25,10 @@ type DataCenterClient struct {
 	// httpClient logs every request (including the URL and query string) and is used
 	// for all calls except CreateUser.
 	httpClient *uhttp.BaseHttpClient
-	// createUserHTTPClient is otherwise identical to httpClient but has request logging
-	// disabled, since CreateUser sends the generated password as a query parameter and
-	// the SDK transport logs req.URL.RawQuery on every call.
+	// createUserHTTPClient builds CreateUser's request (via NewRequest) but CreateUser
+	// executes it through the raw HttpClient field, not Do: Do logs the request URL on a
+	// transport failure regardless of logger settings, and that URL carries the generated
+	// password as a query parameter.
 	createUserHTTPClient *uhttp.BaseHttpClient
 	baseUrl              string
 }
@@ -402,14 +404,28 @@ func (d *DataCenterClient) CreateUser(ctx context.Context, name, password, displ
 		return err
 	}
 
-	// Routed through createUserHTTPClient (logging disabled): the password above is a
-	// query parameter, and the logged client would otherwise write it to logs via uhttp's
-	// request-logging transport.
-	resp, err := d.doWithClient(ctx, d.createUserHTTPClient, http.MethodPost, uri, nil, nil, uhttp.WithHeader("X-Atlassian-Token", "no-check"))
+	req, err := d.createUserHTTPClient.NewRequest(ctx, http.MethodPost, uri,
+		uhttp.WithAcceptJSONHeader(),
+		d.WithAuthorization(),
+		uhttp.WithHeader("X-Atlassian-Token", "no-check"),
+	)
 	if err != nil {
-		return sanitizeCreateUserError(err)
+		return sanitizeCreateUserError(GetCustomErr(req, nil, err))
+	}
+
+	// Executed via the raw HttpClient, bypassing BaseHttpClient.Do: Do logs the *url.Error
+	// on a transport failure unconditionally, and that error's text carries the request
+	// URL, including the password query parameter above.
+	resp, err := d.createUserHTTPClient.HttpClient.Do(req) // #nosec G704 -- this HTTP wrapper intentionally supports arbitrary connector-defined endpoints.
+	if err != nil {
+		return sanitizeTransportError(err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		grpcErr := uhttp.WrapErrorsWithRateLimitInfo(uhttp.GrpcCodeFromHTTPStatus(resp.StatusCode), resp)
+		return sanitizeCreateUserError(GetCustomErr(req, resp, grpcErr))
+	}
 
 	switch resp.StatusCode {
 	case http.StatusOK, http.StatusCreated, http.StatusNoContent:
@@ -438,6 +454,17 @@ func sanitizeCreateUserError(err error) error {
 		sanitized.ErrorMessage = "create user: request failed"
 	}
 	return sanitized
+}
+
+// sanitizeTransportError maps a CreateUser transport failure (timeout, connection reset,
+// DNS, closed server) to a gRPC status without ever reading err's text, which carries the
+// request URL and therefore the generated password.
+func sanitizeTransportError(err error) error {
+	var netErr net.Error
+	if errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &netErr) && netErr.Timeout()) {
+		return status.Error(codes.DeadlineExceeded, "create user: request failed")
+	}
+	return status.Error(codes.Unavailable, "create user: request failed")
 }
 
 // DeleteUser deletes a local Bitbucket user account by name.
