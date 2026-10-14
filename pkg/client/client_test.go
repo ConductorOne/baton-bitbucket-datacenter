@@ -69,6 +69,24 @@ func TestBitbucketError_GRPCStatus_ZeroValueIsUnknown(t *testing.T) {
 	}
 }
 
+// TestGetCustomErr_NilRequest_StaysUnknown pins that the nil-request branch of GetCustomErr
+// reports codes.Unknown on Code: sync calls must stay Unknown so a NotFound/etc-like
+// uhttpCode (stashed separately) never leaks into the generic sync-error path and makes the
+// syncer skip a resource. uhttpCode stays codes.Internal since it genuinely reflects an
+// internal precondition failure (a nil request should never happen).
+func TestGetCustomErr_NilRequest_StaysUnknown(t *testing.T) {
+	bbErr := GetCustomErr(nil, nil, errors.New("boom"))
+	if bbErr.Code != codes.Unknown {
+		t.Fatalf("Code = %v, want %v", bbErr.Code, codes.Unknown)
+	}
+	if bbErr.uhttpCode != codes.Internal {
+		t.Fatalf("uhttpCode = %v, want %v", bbErr.uhttpCode, codes.Internal)
+	}
+	if got := status.Code(bbErr); got != codes.Unknown {
+		t.Fatalf("status.Code(bbErr) = %v, want %v", got, codes.Unknown)
+	}
+}
+
 func TestCreateUser_Success(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/"+adminUsersEndpoint {
@@ -173,6 +191,72 @@ func TestCreateUser_OtherError_NoPasswordLeak(t *testing.T) {
 	}
 	if got := status.Code(err); got != codes.PermissionDenied {
 		t.Fatalf("status.Code(err) = %v, want %v", got, codes.PermissionDenied)
+	}
+}
+
+// TestCreateUser_Redirect_NotFollowed covers the real bug where CreateUser's dedicated HTTP
+// client followed 3xx responses: a redirect target could receive the request (and therefore
+// the password query parameter), and a GET to that target could come back 2xx and be mistaken
+// for a successful create. CheckRedirect on createUserHTTPClient must stop the redirect from
+// being followed at all.
+func TestCreateUser_Redirect_NotFollowed(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		code int
+	}{
+		{name: "302 Found", code: http.StatusFound},
+		{name: "307 Temporary Redirect", code: http.StatusTemporaryRedirect},
+		{name: "308 Permanent Redirect", code: http.StatusPermanentRedirect},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var targetHit bool
+			target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				targetHit = true
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer target.Close()
+
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Location", target.URL+"/"+adminUsersEndpoint)
+				w.WriteHeader(tt.code)
+			}))
+			defer srv.Close()
+
+			cli := newTestClient(t, srv)
+			err := cli.CreateUser(context.Background(), "jdoe", testPassword, "Jane Doe", "jane@example.com", false)
+			assertNoPassword(t, err)
+
+			if targetHit {
+				t.Fatal("expected the redirect target to never receive a request")
+			}
+		})
+	}
+}
+
+// TestCreateUser_HTMLErrorPageDoesNotLeak covers a proxy/WAF in front of Bitbucket returning an
+// HTML error page that echoes the request URI (and therefore the password query parameter) back
+// into the body: sanitizeCreateUserError must never surface the raw response body.
+func TestCreateUser_HTMLErrorPageDoesNotLeak(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte("<html><body>502 Bad Gateway for " + r.URL.String() + "</body></html>")) //nolint:gosec // test fixture simulating a proxy/WAF error page, not a real HTTP handler
+	}))
+	defer srv.Close()
+
+	cli := newTestClient(t, srv)
+	err := cli.CreateUser(context.Background(), "jdoe", testPassword, "Jane Doe", "jane@example.com", false)
+	assertNoPassword(t, err)
+
+	var bbErr *BitbucketError
+	if !errors.As(err, &bbErr) {
+		t.Fatalf("expected a *BitbucketError, got %T: %v", err, err)
+	}
+	if bbErr.ErrorCode != http.StatusBadGateway {
+		t.Fatalf("ErrorCode = %d, want %d", bbErr.ErrorCode, http.StatusBadGateway)
+	}
+	if strings.Contains(bbErr.ErrorMessage, "<html>") {
+		t.Fatalf("expected the raw HTML body not to be surfaced, got: %q", bbErr.ErrorMessage)
 	}
 }
 

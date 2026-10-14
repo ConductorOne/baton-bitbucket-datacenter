@@ -144,10 +144,12 @@ func (u *userBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken 
 	return nil, "", nil, nil
 }
 
-// CreateAccountCapabilityDetails declares RANDOM_PASSWORD: Bitbucket's create-user API
-// requires a password on every call, so CreateAccount generates one from the caller's
-// CredentialOptions and returns it to the caller as PlaintextData on a fresh create,
-// giving the platform/admin a usable credential for the new account.
+// CreateAccountCapabilityDetails declares RANDOM_PASSWORD: Bitbucket's create-user API only
+// requires a password unless notify=true, which instead emails the new user a set-password
+// link and therefore depends on Bitbucket having a mail server configured. CreateAccount
+// generates a password from the caller's CredentialOptions and returns it to the caller as
+// PlaintextData on a fresh create, giving the platform/admin a usable credential for the new
+// account without depending on mail delivery.
 func (u *userBuilder) CreateAccountCapabilityDetails(ctx context.Context) (*v2.CredentialDetailsAccountProvisioning, annotations.Annotations, error) {
 	return &v2.CredentialDetailsAccountProvisioning{
 		SupportedCredentialOptions: []v2.CapabilityDetailCredentialOption{
@@ -159,7 +161,7 @@ func (u *userBuilder) CreateAccountCapabilityDetails(ctx context.Context) (*v2.C
 
 // CreateAccount provisions a new local Bitbucket user account.
 //
-// POST /rest/api/latest/admin/users returns 204 No Content on success, so the
+// POST /rest/api/latest/admin/users returns 200/201/204 on success, so the
 // created user is fetched afterward (by name) to build the resulting resource.
 //
 // A 409 (login already taken) is resolved against that post-create lookup by
@@ -174,7 +176,7 @@ func (u *userBuilder) CreateAccountCapabilityDetails(ctx context.Context) (*v2.C
 //   - Lookup fails or finds nothing: identity cannot be verified either way,
 //     so this returns an error rather than guessing.
 //
-// A fresh create (204) always returns SuccessResult with the generated
+// A fresh create (200/201/204) always returns SuccessResult with the generated
 // password as PlaintextData. A failed or empty lookup in that path is not
 // fatal: the generated password is already set server-side, so the resource
 // is built from the known login/display name/email and the password is still
@@ -243,15 +245,12 @@ func (u *userBuilder) CreateAccount(
 		return nil, nil, nil, fmt.Errorf("bitbucket(dc)-connector: create account %s: %w", login, err)
 	}
 
-	// Bypass uhttp's in-memory GET cache (1h TTL): without this, a lookup moments after a
-	// create/delete/create cycle on the same login can return another call's stale cached
-	// response for the same filter=login URL, which would also make the 409 email guard
-	// below compare against stale data instead of the account that actually exists now.
-	if cacheErr := uhttp.ClearCaches(ctx); cacheErr != nil {
-		l.Debug("bitbucket(dc)-connector: create account: clear http cache", zap.Error(cacheErr))
-	}
-
-	fetched, err := u.client.GetUserByName(ctx, login)
+	// Bypass uhttp's in-memory GET cache (1h TTL) for this lookup only: without this, a
+	// lookup moments after a create/delete/create cycle on the same login can return
+	// another call's stale cached response for the same filter=login URL, which would also
+	// make the 409 email guard below compare against stale data instead of the account that
+	// actually exists now.
+	fetched, err := u.client.GetUserByName(ctx, login, uhttp.WithNoCache())
 	if err != nil || fetched == nil {
 		if alreadyExists {
 			// Nothing to lose by failing here: the idempotent 409 path never set a
@@ -282,10 +281,9 @@ func (u *userBuilder) CreateAccount(
 		}
 	}
 
-	// Deliberate exception: Bitbucket usernames are unique but emails are NOT (verified
-	// live against Bitbucket DC 8.9.4: a second user with the same email is created
-	// fine), so a username match with a different email is another person's account
-	// and must never be adopted.
+	// Deliberate exception: Bitbucket usernames are unique but emails are NOT (a second
+	// user with the same email can be created fine), so a username match with a
+	// different email is another person's account and must never be adopted.
 	if alreadyExists && !strings.EqualFold(fetched.EmailAddress, email) {
 		return nil, nil, nil, status.Error(codes.AlreadyExists, fmt.Sprintf("bitbucket(dc)-connector: create account: login %q already exists with a different email address", login))
 	}
@@ -318,10 +316,10 @@ func (u *userBuilder) CreateAccount(
 // Delete deprovisions a Bitbucket user account by deleting it.
 //
 // A 404 whose response body names Bitbucket's NoSuchUserException is treated as
-// already-deleted success, since the C1 platform retries deletes and a connector
-// that errors on an already-deleted user fails every retry. A 404 without that
-// marker (e.g. from a proxy/WAF in front of /admin/*) is surfaced as an error
-// instead, since it isn't a reliable signal that the user is actually gone.
+// already-deleted success, since a re-run or stale action shouldn't fail just because
+// the user is already gone. A 404 without that marker (e.g. from a proxy/WAF in front
+// of /admin/*) is surfaced as an error instead, since it isn't a reliable signal that
+// the user is actually gone.
 // Any other failure - notably a user managed by an external directory (LDAP/Crowd),
 // which Bitbucket refuses to delete through this API - is surfaced with the
 // upstream response body so the operator can see why the delete did not happen.

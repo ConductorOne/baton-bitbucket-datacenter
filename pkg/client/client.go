@@ -25,11 +25,12 @@ type DataCenterClient struct {
 	// httpClient logs every request (including the URL and query string) and is used
 	// for all calls except CreateUser.
 	httpClient *uhttp.BaseHttpClient
-	// createUserHTTPClient builds CreateUser's request (via NewRequest) but CreateUser
-	// executes it through the raw HttpClient field, not Do: Do logs the request URL on a
+	// createUserHTTPClient is a plain *http.Client (logging off, redirects disabled) used
+	// only by CreateUser: CreateUser builds its own request and executes it directly via
+	// this client's Do, bypassing uhttp.BaseHttpClient.Do, which logs the request URL on a
 	// transport failure regardless of logger settings, and that URL carries the generated
 	// password as a query parameter.
-	createUserHTTPClient *uhttp.BaseHttpClient
+	createUserHTTPClient *http.Client
 	baseUrl              string
 }
 
@@ -197,18 +198,16 @@ func New(ctx context.Context, baseUrl string, auth *Auth) (*DataCenterClient, er
 		return nil, err
 	}
 
-	// Same transport options as above, except logging is off: see the
-	// createUserHTTPClient field comment.
+	// Same transport options as above, except logging is off and redirects are disabled:
+	// see the createUserHTTPClient field comment.
 	createUserHTTPClient, err := uhttp.NewClient(ctx,
 		uhttp.WithLogger(false, ctxzap.Extract(ctx)),
 	)
 	if err != nil {
 		return nil, err
 	}
-
-	createUserCli, err := uhttp.NewBaseHttpClientWithContext(ctx, createUserHTTPClient)
-	if err != nil {
-		return nil, err
+	createUserHTTPClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		return http.ErrUseLastResponse
 	}
 
 	if !isValidUrl(baseUrl) {
@@ -218,7 +217,7 @@ func New(ctx context.Context, baseUrl string, auth *Auth) (*DataCenterClient, er
 	// basic authentication or bearerToken
 	dc := DataCenterClient{
 		httpClient:           cli,
-		createUserHTTPClient: createUserCli,
+		createUserHTTPClient: createUserHTTPClient,
 		baseUrl:              baseUrl,
 		auth:                 auth,
 	}
@@ -231,7 +230,7 @@ func GetCustomErr(req *http.Request, resp *http.Response, err error) *BitbucketE
 		return &BitbucketError{
 			ErrorMessage:     "Unknown error",
 			ErrorDescription: "request should not be nil",
-			Code:             codes.Internal,
+			Code:             codes.Unknown,
 			uhttpCode:        codes.Internal,
 		}
 	}
@@ -280,20 +279,6 @@ func (d *DataCenterClient) MakeURL(ctx context.Context, path string, queryParams
 }
 
 func (d *DataCenterClient) Do(ctx context.Context, method string, uri *url.URL, body interface{}, response interface{}, reqOptions ...uhttp.RequestOption) (*http.Response, error) {
-	return d.doWithClient(ctx, d.httpClient, method, uri, body, response, reqOptions...)
-}
-
-// doWithClient is Do's implementation, parameterized on which base client issues the
-// request so CreateUser can route through createUserHTTPClient instead.
-func (d *DataCenterClient) doWithClient(
-	ctx context.Context,
-	httpClient *uhttp.BaseHttpClient,
-	method string,
-	uri *url.URL,
-	body interface{},
-	response interface{},
-	reqOptions ...uhttp.RequestOption,
-) (*http.Response, error) {
 	reqOptions = append(reqOptions,
 		uhttp.WithAcceptJSONHeader(),
 		d.WithAuthorization(),
@@ -307,12 +292,12 @@ func (d *DataCenterClient) doWithClient(
 		doOptions = append(doOptions, uhttp.WithJSONResponse(response))
 	}
 
-	req, err := httpClient.NewRequest(ctx, method, uri, reqOptions...)
+	req, err := d.httpClient.NewRequest(ctx, method, uri, reqOptions...)
 	if err != nil {
 		return nil, GetCustomErr(req, nil, err)
 	}
 
-	resp, err := httpClient.Do(req, doOptions...)
+	resp, err := d.httpClient.Do(req, doOptions...)
 	if err != nil {
 		return nil, GetCustomErr(req, resp, err)
 	}
@@ -347,7 +332,7 @@ func (d *DataCenterClient) GetUsers(ctx context.Context, pToken *pagination.Toke
 // "JDoe" when the account was originally created as "jdoe").
 // GET - http://{baseurl}/rest/api/latest/users?filter={name}
 // https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-system-maintenance/#api-api-latest-users-get
-func (d *DataCenterClient) GetUserByName(ctx context.Context, name string) (*User, error) {
+func (d *DataCenterClient) GetUserByName(ctx context.Context, name string, reqOptions ...uhttp.RequestOption) (*User, error) {
 	start := 0
 	for {
 		uri, err := d.MakeURL(ctx, allUsersEndpoint, map[string]string{
@@ -360,7 +345,7 @@ func (d *DataCenterClient) GetUserByName(ctx context.Context, name string) (*Use
 		}
 
 		var userData UsersAPIData
-		resp, err := d.Do(ctx, http.MethodGet, uri, nil, &userData)
+		resp, err := d.Do(ctx, http.MethodGet, uri, nil, &userData, reqOptions...)
 		if err != nil {
 			return nil, err
 		}
@@ -404,19 +389,30 @@ func (d *DataCenterClient) CreateUser(ctx context.Context, name, password, displ
 		return err
 	}
 
-	req, err := d.createUserHTTPClient.NewRequest(ctx, http.MethodPost, uri,
-		uhttp.WithAcceptJSONHeader(),
-		d.WithAuthorization(),
-		uhttp.WithHeader("X-Atlassian-Token", "no-check"),
-	)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, uri.String(), nil)
 	if err != nil {
 		return sanitizeCreateUserError(GetCustomErr(req, nil, err))
 	}
+	for _, opt := range []uhttp.RequestOption{
+		uhttp.WithAcceptJSONHeader(),
+		d.WithAuthorization(),
+		uhttp.WithHeader("X-Atlassian-Token", "no-check"),
+	} {
+		_, headers, err := opt()
+		if err != nil {
+			return sanitizeCreateUserError(GetCustomErr(req, nil, err))
+		}
+		for k, v := range headers {
+			req.Header.Set(k, v)
+		}
+	}
 
-	// Executed via the raw HttpClient, bypassing BaseHttpClient.Do: Do logs the *url.Error
-	// on a transport failure unconditionally, and that error's text carries the request
-	// URL, including the password query parameter above.
-	resp, err := d.createUserHTTPClient.HttpClient.Do(req) // #nosec G704 -- this HTTP wrapper intentionally supports arbitrary connector-defined endpoints.
+	// Executed via the plain *http.Client, bypassing uhttp.BaseHttpClient.Do: Do logs the
+	// *url.Error on a transport failure unconditionally, and that error's text carries the
+	// request URL, including the password query parameter above. CheckRedirect on this
+	// client is set to stop following redirects (see New), so a 3xx response falls into
+	// the non-2xx branch below instead of being followed with the password still attached.
+	resp, err := d.createUserHTTPClient.Do(req) // #nosec G704 -- this HTTP wrapper intentionally supports arbitrary connector-defined endpoints.
 	if err != nil {
 		return sanitizeTransportError(err)
 	}
@@ -427,33 +423,66 @@ func (d *DataCenterClient) CreateUser(ctx context.Context, name, password, displ
 		return sanitizeCreateUserError(GetCustomErr(req, resp, grpcErr))
 	}
 
-	switch resp.StatusCode {
-	case http.StatusOK, http.StatusCreated, http.StatusNoContent:
-	default:
-		return fmt.Errorf("create user: unexpected status code %d", resp.StatusCode)
-	}
-
 	return nil
 }
 
-// sanitizeCreateUserError drops the request URL from the error because it contains
-// the password. ErrorCode is preserved so IsAlreadyExistsError keeps working on the result.
+// maxSanitizedCreateUserErrorLen caps the length of a message extracted from Bitbucket's
+// JSON error body: the body itself is attacker/proxy-controlled (see
+// sanitizeCreateUserMessage), so even the parsed message is bounded defensively.
+const maxSanitizedCreateUserErrorLen = 512
+
+// bitbucketErrorsBody is Bitbucket's JSON error response shape, e.g.
+// {"errors":[{"message":"A user with that name already exists"}]}.
+type bitbucketErrorsBody struct {
+	Errors []struct {
+		Message string `json:"message"`
+	} `json:"errors"`
+}
+
+// sanitizeCreateUserError drops the raw response body from the error because it contains
+// (or, behind a proxy/WAF error page, can echo back) the password query parameter. Only
+// Bitbucket's parsed errors[].message values are surfaced; everything else collapses to a
+// fixed message. ErrorCode is preserved so IsAlreadyExistsError keeps working on the result.
 func sanitizeCreateUserError(err error) error {
 	var bbErr *BitbucketError
 	if !errors.As(err, &bbErr) {
 		return status.Error(status.Code(err), "create user: request failed")
 	}
 
-	sanitized := &BitbucketError{ErrorCode: bbErr.ErrorCode, Code: bbErr.uhttpCode}
-	switch {
-	case bbErr.ErrorSummary != "":
-		sanitized.ErrorMessage = bbErr.ErrorSummary
-	case bbErr.ErrorCode != 0:
-		sanitized.ErrorMessage = fmt.Sprintf("create user: unexpected status code %d", bbErr.ErrorCode)
-	default:
-		sanitized.ErrorMessage = "create user: request failed"
+	return &BitbucketError{
+		ErrorCode:    bbErr.ErrorCode,
+		Code:         bbErr.uhttpCode,
+		ErrorMessage: sanitizeCreateUserMessage(bbErr),
 	}
-	return sanitized
+}
+
+// sanitizeCreateUserMessage extracts Bitbucket's structured errors[].message values from
+// the raw response body if the body parses as Bitbucket's JSON error shape, otherwise
+// returns a fixed message. The raw body is never surfaced as-is: it can be an HTML error
+// page from a proxy/WAF in front of Bitbucket that echoes the request URI - and therefore
+// the password query parameter - back into the page.
+func sanitizeCreateUserMessage(bbErr *BitbucketError) string {
+	var body bitbucketErrorsBody
+	if bbErr.ErrorSummary != "" && json.Unmarshal([]byte(bbErr.ErrorSummary), &body) == nil {
+		messages := make([]string, 0, len(body.Errors))
+		for _, e := range body.Errors {
+			if e.Message != "" {
+				messages = append(messages, e.Message)
+			}
+		}
+		if len(messages) > 0 {
+			msg := strings.Join(messages, "; ")
+			if len(msg) > maxSanitizedCreateUserErrorLen {
+				msg = msg[:maxSanitizedCreateUserErrorLen]
+			}
+			return msg
+		}
+	}
+
+	if bbErr.ErrorCode != 0 {
+		return fmt.Sprintf("create user: unexpected status code %d", bbErr.ErrorCode)
+	}
+	return "create user: request failed"
 }
 
 // sanitizeTransportError maps a CreateUser transport failure (timeout, connection reset,

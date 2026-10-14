@@ -54,9 +54,11 @@ When run with the `--provisioning` flag, `baton-bitbucket-datacenter` supports c
 deleting Bitbucket users:
 
 - **Create account**: provisions a new local Bitbucket user (`POST /rest/api/latest/admin/users`)
-  from a username, display name, and email address. The connector generates a random password
-  (RANDOM_PASSWORD) to satisfy the API's required `password` parameter and returns it to C1 as the
-  account's credential; it is never logged or persisted. On a fresh create, the generated password
+  from a username, display name, and email address. The API requires a password unless the
+  request asks it to email the new user a set-password link (`notify=true`), which depends on
+  Bitbucket having a mail server configured. The connector generates a random password
+  (RANDOM_PASSWORD) so a usable credential is returned to C1 as the account's credential without
+  depending on mail delivery; it is never logged or persisted. On a fresh create, the generated password
   is returned to the caller; on an idempotent 409 (an account with that username and email already
   exists), the existing account's password was never touched by the request, so no password is
   returned. An optional `add_to_default_group` field controls whether the user is added to
@@ -78,11 +80,10 @@ deleting Bitbucket users:
 request body. This is the only way Bitbucket's `POST /rest/api/latest/admin/users` endpoint
 accepts it: the [Atlassian REST API reference](https://developer.atlassian.com/server/bitbucket/rest/)
 documents `name`/`password`/`displayName`/`emailAddress`/`addToDefaultGroup` as query
-parameters with no request body, and live testing against Bitbucket Data Center 8.9.4 confirmed
-it - the endpoint returns 415 for a `application/x-www-form-urlencoded` body and silently ignores
-an `application/json` body (it only ever reads the query string). Because the password is in the
-URL, it can be recorded by anything that logs full request URLs in front of Bitbucket - access
-logs, reverse proxies, load balancers. To reduce exposure:
+parameters with no request body - the endpoint returns 415 for a `application/x-www-form-urlencoded`
+body and silently ignores an `application/json` body (it only ever reads the query string).
+Because the password is in the URL, it can be recorded by anything that logs full request URLs
+in front of Bitbucket - access logs, reverse proxies, load balancers. To reduce exposure:
   - Ask the new user to change their password after first login, or change it as an administrator.
   - Restrict access to any logs or proxies that sit in front of this Bitbucket instance.
   - Ensure TLS terminates as close to Bitbucket as possible so the URL isn't carried over
@@ -93,11 +94,11 @@ least the `ADMIN` (Administrator) global permission; `SYS_ADMIN` also works. `LI
 is not sufficient and is rejected.
 
 **HTTP access tokens are not supported for account provisioning**, regardless of the scope
-granted when the token was created (verified live against Bitbucket Data Center 8.9.4: Project
-Admin + Repository Admin, the maximum scope an HTTP access token can hold, is still rejected
-with a 401 `AuthorisationException` on both create and delete, even when the token belongs to a
-`SYS_ADMIN` user - personal access tokens in Bitbucket Server cannot exercise a user's global
-permissions). To use `--provisioning`, configure the connector with `BATON_BITBUCKETDC_USERNAME`
+granted when the token was created: even the maximum scope an HTTP access token can hold
+(Project Admin + Repository Admin) is rejected with a 401 `AuthorisationException` on both
+create and delete, even when the token belongs to a `SYS_ADMIN` user - personal access tokens
+in Bitbucket Server cannot exercise a user's global permissions. To use `--provisioning`,
+configure the connector with `BATON_BITBUCKETDC_USERNAME`
 / `BATON_BITBUCKETDC_PASSWORD` (basic auth) for a user with global `ADMIN` or `SYS_ADMIN`
 permission instead of `BATON_BITBUCKETDC_TOKEN`; the connector rejects configuring both at once.
 

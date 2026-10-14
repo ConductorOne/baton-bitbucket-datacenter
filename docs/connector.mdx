@@ -177,12 +177,11 @@ re-create the account.
 <Warning>
 Bitbucket's user-creation API (`POST /rest/api/latest/admin/users`) only accepts the generated
 password as a `password` query string parameter - there is no request body alternative on this
-endpoint (confirmed in Atlassian's REST API reference and by live testing against Bitbucket Data
-Center 8.9.4). Because the password travels in the URL, anything that logs full request URLs in
-front of Bitbucket - access logs, reverse proxies, load balancers - can record it. Ask the new
-user to change their password after first login, or change it as an administrator; restrict
-access to logs/proxies in front of Bitbucket; and make sure TLS terminates as close to Bitbucket
-as possible.
+endpoint (confirmed in Atlassian's REST API reference). Because the password travels in the URL,
+anything that logs full request URLs in front of Bitbucket - access logs, reverse proxies, load
+balancers - can record it. Ask the new user to change their password after first login, or
+change it as an administrator; restrict access to logs/proxies in front of Bitbucket; and make
+sure TLS terminates as close to Bitbucket as possible.
 </Warning>
 
 See the connector's README or run `--help` to see all available configuration flags and environment variables.

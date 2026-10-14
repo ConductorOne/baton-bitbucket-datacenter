@@ -637,9 +637,9 @@ func TestCreateAccount_PasswordNeverLogged(t *testing.T) {
 // through the same client, using different emails each time, against a real uhttp-backed
 // client (not a stub). uhttp caches GET responses in-memory for an hour keyed by request
 // URL; since the post-create lookup always queries the same filter=<login> URL, a client
-// that didn't clear that cache before looking up the freshly (re)created user would return
-// the first create's cached response instead of the second, proving the ClearCaches call in
-// CreateAccount is load-bearing and not just dead code.
+// that didn't bypass that cache before looking up the freshly (re)created user would return
+// the first create's cached response instead of the second, proving the uhttp.WithNoCache()
+// option passed to GetUserByName in CreateAccount is load-bearing and not just dead code.
 func TestCreateAccount_BypassesStaleCache(t *testing.T) {
 	var mu sync.Mutex
 	users := map[string]client.User{}
