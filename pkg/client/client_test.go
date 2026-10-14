@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/conductorone/baton-sdk/pkg/pagination"
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
@@ -257,6 +258,35 @@ func TestCreateUser_HTMLErrorPageDoesNotLeak(t *testing.T) {
 	}
 	if strings.Contains(bbErr.ErrorMessage, "<html>") {
 		t.Fatalf("expected the raw HTML body not to be surfaced, got: %q", bbErr.ErrorMessage)
+	}
+}
+
+// A Bitbucket error message longer than the cap, built so byte 512 falls inside a multi-byte
+// character, must be truncated on a rune boundary and stay valid UTF-8.
+func TestCreateUser_LongMultibyteErrorStaysValidUTF8(t *testing.T) {
+	// 511 ASCII bytes, then 3-byte runes, so the 512-byte cap lands inside the first one.
+	longMessage := strings.Repeat("a", maxSanitizedCreateUserErrorLen-1) + "€€€"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		body, _ := json.Marshal(map[string]any{"errors": []map[string]string{{"message": longMessage}}})
+		_, _ = w.Write(body)
+	}))
+	defer srv.Close()
+
+	cli := newTestClient(t, srv)
+	err := cli.CreateUser(context.Background(), "jdoe", testPassword, "Jane Doe", "jane@example.com", false)
+	assertNoPassword(t, err)
+
+	var bbErr *BitbucketError
+	if !errors.As(err, &bbErr) {
+		t.Fatalf("expected a *BitbucketError, got %T: %v", err, err)
+	}
+	if !utf8.ValidString(bbErr.ErrorMessage) {
+		t.Fatalf("expected a valid UTF-8 message, got invalid bytes: %q", bbErr.ErrorMessage)
+	}
+	if want := strings.Repeat("a", maxSanitizedCreateUserErrorLen-1); bbErr.ErrorMessage != want {
+		t.Fatalf("expected the cut to back off to the rune boundary (length %d), got length %d", len(want), len(bbErr.ErrorMessage))
 	}
 }
 

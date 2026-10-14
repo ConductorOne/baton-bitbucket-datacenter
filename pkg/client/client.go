@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/conductorone/baton-sdk/pkg/pagination"
 	"github.com/conductorone/baton-sdk/pkg/uhttp"
@@ -473,7 +474,12 @@ func sanitizeCreateUserMessage(bbErr *BitbucketError) string {
 		if len(messages) > 0 {
 			msg := strings.Join(messages, "; ")
 			if len(msg) > maxSanitizedCreateUserErrorLen {
-				msg = msg[:maxSanitizedCreateUserErrorLen]
+				// Cut on a rune boundary so the message stays valid UTF-8.
+				n := maxSanitizedCreateUserErrorLen
+				for n > 0 && !utf8.RuneStart(msg[n]) {
+					n--
+				}
+				msg = msg[:n]
 			}
 			return msg
 		}
