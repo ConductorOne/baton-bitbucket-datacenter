@@ -3,7 +3,6 @@ package connector
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -175,8 +174,8 @@ func TestCreateAccount(t *testing.T) {
 		if already.Resource == nil {
 			t.Fatal("expected a resource on AlreadyExistsResult")
 		}
-		if already.IsCreateAccountResult {
-			t.Fatal("expected IsCreateAccountResult unset on AlreadyExistsResult; the SDK type-switches on the result type itself")
+		if !already.IsCreateAccountResult {
+			t.Fatal("expected IsCreateAccountResult set on AlreadyExistsResult")
 		}
 		// The existing account's password was never touched on this idempotent 409 path -
 		// returning the freshly generated (and unused) password here would hand back a
@@ -445,7 +444,10 @@ func TestUserBuilder_CreateAccountCapabilityDetails(t *testing.T) {
 	}
 }
 
-func TestCreateAccount_CredentialOptions_InvalidArgument(t *testing.T) {
+// TestCreateAccount_GeneratePasswordError drives CreateAccount through invalid
+// CredentialOptions and asserts generatePassword's error is surfaced (and nothing else
+// happens: no request reaches the mock server, and no PlaintextData is returned).
+func TestCreateAccount_GeneratePasswordError(t *testing.T) {
 	tests := []struct {
 		name              string
 		credentialOptions *v2.LocalCredentialOptions
@@ -456,7 +458,9 @@ func TestCreateAccount_CredentialOptions_InvalidArgument(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			srv := userServer(t, nil, nil, nil)
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+			}))
 			defer srv.Close()
 			u := newTestUserBuilder(t, srv)
 
@@ -470,51 +474,13 @@ func TestCreateAccount_CredentialOptions_InvalidArgument(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected an error, got nil")
 			}
-			if code := status.Code(err); code != codes.InvalidArgument {
-				t.Fatalf("expected codes.InvalidArgument, got %s (%v)", code, err)
+			if !strings.Contains(err.Error(), "generate password") {
+				t.Fatalf("expected error to mention %q, got: %v", "generate password", err)
 			}
 			if len(plaintext) != 0 {
 				t.Fatalf("expected no PlaintextData on error, got %+v", plaintext)
 			}
 		})
-	}
-}
-
-// TestCreateAccount_GeneratePassword_Internal drives CreateAccount through a
-// non-sentinel generatePassword failure (e.g. crypto/rand itself failing, which the
-// real crypto.GeneratePassword has no way to simulate on demand) via the generatePassword
-// seam, and asserts it maps to codes.Internal rather than codes.InvalidArgument, and that
-// the error never leaks a password (there isn't one to leak: generation failed first).
-func TestCreateAccount_GeneratePassword_Internal(t *testing.T) {
-	srv := userServer(t, nil, nil, nil)
-	defer srv.Close()
-	u := newTestUserBuilder(t, srv)
-
-	original := generatePassword
-	wantErr := errors.New("crypto/rand: entropy source unavailable")
-	generatePassword = func(context.Context, *v2.LocalCredentialOptions) (string, error) {
-		return "", wantErr
-	}
-	defer func() { generatePassword = original }()
-
-	accountInfo := accountInfoFromProfile(t, map[string]any{
-		"login":        "jdoe",
-		"display_name": "Jane Doe",
-		"email":        "jane@example.com",
-	})
-
-	_, plaintext, _, err := u.CreateAccount(context.Background(), accountInfo, validCredentialOptions(24))
-	if err == nil {
-		t.Fatal("expected an error, got nil")
-	}
-	if code := status.Code(err); code != codes.Internal {
-		t.Fatalf("expected codes.Internal, got %s (%v)", code, err)
-	}
-	if !strings.Contains(err.Error(), wantErr.Error()) {
-		t.Fatalf("expected error to mention %q, got %v", wantErr, err)
-	}
-	if len(plaintext) != 0 {
-		t.Fatalf("expected no PlaintextData on error, got %+v", plaintext)
 	}
 }
 
@@ -718,7 +684,7 @@ func TestCreateAccount_BypassesStaleCache(t *testing.T) {
 		t.Fatalf("first create email = %q, want %q", got, "first@example.com")
 	}
 
-	if _, err := u.Delete(ctx, &v2.ResourceId{ResourceType: "user", Resource: "jdoe"}); err != nil {
+	if _, err := u.Delete(ctx, &v2.ResourceId{ResourceType: "user", Resource: "jdoe"}, nil); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 
@@ -781,7 +747,7 @@ func TestUserBuilder_Delete(t *testing.T) {
 			defer srv.Close()
 
 			u := newTestUserBuilder(t, srv)
-			_, err := u.Delete(context.Background(), &v2.ResourceId{ResourceType: "user", Resource: "jdoe"})
+			_, err := u.Delete(context.Background(), &v2.ResourceId{ResourceType: "user", Resource: "jdoe"}, nil)
 
 			if tt.wantErr && err == nil {
 				t.Fatal("expected an error, got nil")
@@ -795,5 +761,21 @@ func TestUserBuilder_Delete(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestUserBuilder_Delete_WrongResourceType(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+	}))
+	defer srv.Close()
+
+	u := newTestUserBuilder(t, srv)
+	_, err := u.Delete(context.Background(), &v2.ResourceId{ResourceType: "group", Resource: "jdoe"}, nil)
+	if err == nil {
+		t.Fatal("expected an error, got nil")
+	}
+	if got := status.Code(err); got != codes.InvalidArgument {
+		t.Fatalf("status.Code(err) = %v, want %v", got, codes.InvalidArgument)
 	}
 }

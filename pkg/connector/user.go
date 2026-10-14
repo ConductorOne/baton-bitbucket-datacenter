@@ -21,11 +21,6 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// generatePassword is a seam over crypto.GeneratePassword so tests can simulate the
-// non-sentinel error path (e.g. a crypto/rand failure), which the real implementation
-// only produces via the unfakeable system entropy source.
-var generatePassword = crypto.GeneratePassword
-
 func userResource(_ context.Context, user *client.User, parentResourceID *v2.ResourceId, opts []rs.ResourceOption) (*v2.Resource, error) {
 	displayName := user.DisplayName
 	if displayName == "" {
@@ -159,28 +154,8 @@ func (u *userBuilder) CreateAccountCapabilityDetails(ctx context.Context) (*v2.C
 	}, nil, nil
 }
 
-// CreateAccount provisions a new local Bitbucket user account.
-//
-// POST /rest/api/latest/admin/users returns 200/201/204 on success, so the
-// created user is fetched afterward (by name) to build the resulting resource.
-//
-// A 409 (login already taken) is resolved against that post-create lookup by
-// email, since Bitbucket usernames are unique but emails are not:
-//   - Same email as requested: the login is idempotently ours, so this returns
-//     AlreadyExistsResult{Resource: resource} - no plaintext data (the existing
-//     user's password was never touched) and no IsCreateAccountResult (the SDK
-//     type-switches on the result type itself).
-//   - Different email: this is someone else's account under the same login,
-//     and adopting it would hand the caller access to a different person's
-//     identity, so this returns status.Error(codes.AlreadyExists, ...).
-//   - Lookup fails or finds nothing: identity cannot be verified either way,
-//     so this returns an error rather than guessing.
-//
-// A fresh create (200/201/204) always returns SuccessResult with the generated
-// password as PlaintextData. A failed or empty lookup in that path is not
-// fatal: the generated password is already set server-side, so the resource
-// is built from the known login/display name/email and the password is still
-// returned rather than discarding a successful create.
+// CreateAccount provisions a new local Bitbucket user account. The create response has no
+// body, so the user is fetched by name afterward, and a 409 is resolved against that lookup.
 func (u *userBuilder) CreateAccount(
 	ctx context.Context,
 	accountInfo *v2.AccountInfo,
@@ -220,21 +195,9 @@ func (u *userBuilder) CreateAccount(
 
 	addToDefaultGroup := profile.GetFields()["add_to_default_group"].GetBoolValue()
 
-	// crypto.GeneratePassword is nil-safe on credentialOptions (a nil receiver's
-	// GetRandomPassword() returns nil), so a missing or malformed CredentialOptions
-	// surfaces as ErrInvalidCredentialOptions / ErrInvalidPasswordLength here rather
-	// than a panic. Neither sentinel error can contain the password, since generation
-	// hasn't produced one yet when they're returned. Any other error (e.g. crypto/rand
-	// itself failing) is the caller's CredentialOptions being fine but generation
-	// failing regardless, so it maps to Internal rather than InvalidArgument.
-	password, err := generatePassword(ctx, credentialOptions)
+	password, err := crypto.GeneratePassword(ctx, credentialOptions)
 	if err != nil {
-		code := codes.Internal
-		if errors.Is(err, crypto.ErrInvalidCredentialOptions) || errors.Is(err, crypto.ErrInvalidPasswordLength) {
-			code = codes.InvalidArgument
-		}
-		return nil, nil, nil, uhttp.WrapErrors(code,
-			fmt.Sprintf("bitbucket(dc)-connector: create account %s: generate password", login), err)
+		return nil, nil, nil, fmt.Errorf("bitbucket(dc)-connector: create account %s: generate password: %w", login, err)
 	}
 
 	err = u.client.CreateUser(ctx, login, password, displayName, email, addToDefaultGroup)
@@ -245,33 +208,25 @@ func (u *userBuilder) CreateAccount(
 		return nil, nil, nil, fmt.Errorf("bitbucket(dc)-connector: create account %s: %w", login, err)
 	}
 
-	// Bypass uhttp's in-memory GET cache (1h TTL) for this lookup only: without this, a
-	// lookup moments after a create/delete/create cycle on the same login can return
-	// another call's stale cached response for the same filter=login URL, which would also
-	// make the 409 email guard below compare against stale data instead of the account that
-	// actually exists now.
+	// Skip the GET cache so the lookup sees the account that was just created.
 	fetched, err := u.client.GetUserByName(ctx, login, uhttp.WithNoCache())
 	if err != nil || fetched == nil {
 		if alreadyExists {
-			// Nothing to lose by failing here: the idempotent 409 path never set a
-			// password, and we need the fetched email for the identity-safety check
-			// right below.
+			// The idempotent 409 path never set a password, and the identity check below
+			// needs the fetched email, so failing here loses nothing.
 			if err != nil {
 				return nil, nil, nil, fmt.Errorf("bitbucket(dc)-connector: create account %s: fetch after create: %w", login, err)
 			}
 			return nil, nil, nil, fmt.Errorf("bitbucket(dc)-connector: create account %s: fetch after create: user not found", login)
 		}
-		// CreateUser already succeeded and set the generated password server-side.
-		// Failing here would report the create as failed while leaving a
-		// password-protected account that nobody - not C1, not this caller - knows
-		// the password for. Build the resource from what we already know instead of
-		// discarding a create that actually succeeded.
+		// The create already succeeded and set the password server-side, so failing here
+		// would discard a working account. Build the resource from what we already know.
 		l.Debug("bitbucket(dc)-connector: create account: fetch after create failed, building resource from known fields",
 			zap.String("login", login), zap.Error(err))
-		// login/user_slug/user_id are placeholders until the next sync corrects them;
-		// the resource ID (user.Name) is accurate. Slug is left empty rather than
-		// guessed: Bitbucket's real slugs aren't just a lowercased name (e.g. "@"
-		// becomes "_", so jane@corp.com -> jane_corp.com).
+		// Profile login/user_slug/user_id stay empty until the next sync; the resource ID
+		// and trait login are correct. Slug is left empty rather than guessed: Bitbucket's
+		// real slugs aren't just a lowercased name (e.g. "@" becomes "_", so
+		// jane@corp.com -> jane_corp.com).
 		fetched = &client.User{
 			Name:         login,
 			DisplayName:  displayName,
@@ -281,9 +236,7 @@ func (u *userBuilder) CreateAccount(
 		}
 	}
 
-	// Deliberate exception: Bitbucket usernames are unique but emails are NOT (a second
-	// user with the same email can be created fine), so a username match with a
-	// different email is another person's account and must never be adopted.
+	// Usernames are unique in Bitbucket, emails are not, so a different email is another person's account.
 	if alreadyExists && !strings.EqualFold(fetched.EmailAddress, email) {
 		return nil, nil, nil, status.Error(codes.AlreadyExists, fmt.Sprintf("bitbucket(dc)-connector: create account: login %q already exists with a different email address", login))
 	}
@@ -294,11 +247,9 @@ func (u *userBuilder) CreateAccount(
 	}
 
 	if alreadyExists {
-		// The existing user's password was never touched, so there is no plaintext data
-		// to return; IsCreateAccountResult is not set here, as the SDK type-switches on
-		// the result type itself to distinguish AlreadyExists from Success.
 		return &v2.CreateAccountResponse_AlreadyExistsResult{
-			Resource: resource,
+			Resource:              resource,
+			IsCreateAccountResult: true,
 		}, nil, nil, nil
 	}
 
@@ -313,17 +264,13 @@ func (u *userBuilder) CreateAccount(
 	}, nil, nil
 }
 
-// Delete deprovisions a Bitbucket user account by deleting it.
-//
-// A 404 whose response body names Bitbucket's NoSuchUserException is treated as
-// already-deleted success, since a re-run or stale action shouldn't fail just because
-// the user is already gone. A 404 without that marker (e.g. from a proxy/WAF in front
-// of /admin/*) is surfaced as an error instead, since it isn't a reliable signal that
-// the user is actually gone.
-// Any other failure - notably a user managed by an external directory (LDAP/Crowd),
-// which Bitbucket refuses to delete through this API - is surfaced with the
-// upstream response body so the operator can see why the delete did not happen.
-func (u *userBuilder) Delete(ctx context.Context, resourceID *v2.ResourceId) (annotations.Annotations, error) {
+// Delete removes the user; a 404 naming NoSuchUserException counts as already deleted so the
+// operation is idempotent. Other 404s (e.g. from a proxy) are errors.
+func (u *userBuilder) Delete(ctx context.Context, resourceID *v2.ResourceId, parentResourceID *v2.ResourceId) (annotations.Annotations, error) {
+	if resourceID.GetResourceType() != u.resourceType.Id {
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("bitbucket(dc)-connector: delete: unexpected resource type %q", resourceID.GetResourceType()))
+	}
+
 	err := u.client.DeleteUser(ctx, resourceID.Resource)
 	if err != nil {
 		if client.IsNotFoundError(err) && client.IsNoSuchUserError(err) {
