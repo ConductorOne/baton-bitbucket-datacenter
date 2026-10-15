@@ -48,6 +48,28 @@ baton resources
 - Projects
 - Repositories
 
+# Account Provisioning
+
+With the `--provisioning` flag, the connector can create and delete Bitbucket users.
+
+- **Create account**: takes a username, display name and email, and returns a generated random
+  password to C1. The optional `add_to_default_group` field (default `false`) adds the user to
+  Bitbucket's default group; without it the user may not be able to log in.
+- **Delete account**: deletes the user. Users managed by an external directory (LDAP, Crowd)
+  can't be deleted through the API and return an error.
+
+Account provisioning needs basic auth (`BATON_BITBUCKETDC_USERNAME` /
+`BATON_BITBUCKETDC_PASSWORD`) for a user with the global `ADMIN` or `SYS_ADMIN` permission.
+HTTP access tokens are not supported, and a token and a username/password can't be configured
+together.
+
+Bitbucket only accepts the generated password as a query string parameter, so anything that logs
+full request URLs in front of Bitbucket (access logs, reverse proxies, load balancers) can record
+it. To reduce exposure:
+  - Ask the new user to change their password after first login, or change it as an administrator.
+  - Restrict access to any logs or proxies that sit in front of this Bitbucket instance.
+  - Terminate TLS as close to Bitbucket as possible so the URL isn't carried over plaintext HTTP.
+
 # Contributing, Support and Issues
 
 We started Baton because we were tired of taking screenshots and manually building spreadsheets. We welcome contributions, and ideas, no matter how small -- our goal is to make identity and permissions sprawl less painful for everyone. If you have questions, problems, or ideas: Please open a Github Issue!

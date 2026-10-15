@@ -2,13 +2,23 @@ package connector
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/conductorone/baton-bitbucket-datacenter/pkg/client"
 	v2 "github.com/conductorone/baton-sdk/pb/c1/connector/v2"
 	"github.com/conductorone/baton-sdk/pkg/annotations"
+	"github.com/conductorone/baton-sdk/pkg/connectorbuilder"
+	"github.com/conductorone/baton-sdk/pkg/crypto"
 	"github.com/conductorone/baton-sdk/pkg/pagination"
 	rs "github.com/conductorone/baton-sdk/pkg/types/resource"
+	"github.com/conductorone/baton-sdk/pkg/uhttp"
+	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
+	"go.uber.org/zap"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func userResource(_ context.Context, user *client.User, parentResourceID *v2.ResourceId, opts []rs.ResourceOption) (*v2.Resource, error) {
@@ -127,6 +137,152 @@ func (u *userBuilder) Entitlements(_ context.Context, resource *v2.Resource, _ *
 // Grants always returns an empty slice for users since they don't have any entitlements.
 func (u *userBuilder) Grants(ctx context.Context, resource *v2.Resource, pToken *pagination.Token) ([]*v2.Grant, string, annotations.Annotations, error) {
 	return nil, "", nil, nil
+}
+
+// CreateAccountCapabilityDetails declares RANDOM_PASSWORD: Bitbucket's create-user API only
+// requires a password unless notify=true, which instead emails the new user a set-password
+// link and therefore depends on Bitbucket having a mail server configured. CreateAccount
+// generates a password from the caller's CredentialOptions and returns it to the caller as
+// PlaintextData on a fresh create, giving the platform/admin a usable credential for the new
+// account without depending on mail delivery.
+func (u *userBuilder) CreateAccountCapabilityDetails(ctx context.Context) (*v2.CredentialDetailsAccountProvisioning, annotations.Annotations, error) {
+	return &v2.CredentialDetailsAccountProvisioning{
+		SupportedCredentialOptions: []v2.CapabilityDetailCredentialOption{
+			v2.CapabilityDetailCredentialOption_CAPABILITY_DETAIL_CREDENTIAL_OPTION_RANDOM_PASSWORD,
+		},
+		PreferredCredentialOption: v2.CapabilityDetailCredentialOption_CAPABILITY_DETAIL_CREDENTIAL_OPTION_RANDOM_PASSWORD,
+	}, nil, nil
+}
+
+// CreateAccount provisions a new local Bitbucket user account. The create response has no
+// body, so the user is fetched by name afterward, and a 409 is resolved against that lookup.
+func (u *userBuilder) CreateAccount(
+	ctx context.Context,
+	accountInfo *v2.AccountInfo,
+	credentialOptions *v2.LocalCredentialOptions,
+) (connectorbuilder.CreateAccountResponse, []*v2.PlaintextData, annotations.Annotations, error) {
+	l := ctxzap.Extract(ctx)
+	profile := accountInfo.GetProfile()
+
+	// Precedence: the schema-declared profile field wins; GetLogin() is only the
+	// fallback, since it's C1's invitee login and can be populated even when the
+	// admin typed a different value into the schema's Username field.
+	login, _ := rs.GetProfileStringValue(profile, "login")
+	if login == "" {
+		login = accountInfo.GetLogin()
+	}
+	if login == "" {
+		return nil, nil, nil, uhttp.WrapErrors(codes.InvalidArgument, "bitbucket(dc)-connector: create account: login is required")
+	}
+
+	displayName, _ := rs.GetProfileStringValue(profile, "display_name")
+	if displayName == "" {
+		return nil, nil, nil, uhttp.WrapErrors(codes.InvalidArgument, "bitbucket(dc)-connector: create account: display_name is required")
+	}
+
+	email, _ := rs.GetProfileStringValue(profile, "email")
+	if email == "" {
+		for _, e := range accountInfo.GetEmails() {
+			if e.GetAddress() != "" {
+				email = e.GetAddress()
+				break
+			}
+		}
+	}
+	if email == "" {
+		return nil, nil, nil, uhttp.WrapErrors(codes.InvalidArgument, "bitbucket(dc)-connector: create account: email is required")
+	}
+
+	addToDefaultGroup := profile.GetFields()["add_to_default_group"].GetBoolValue()
+
+	password, err := crypto.GeneratePassword(ctx, credentialOptions)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("bitbucket(dc)-connector: create account %s: generate password: %w", login, err)
+	}
+
+	err = u.client.CreateUser(ctx, login, password, displayName, email, addToDefaultGroup)
+	alreadyExists := client.IsAlreadyExistsError(err)
+	if alreadyExists {
+		l.Debug("bitbucket(dc)-connector: create account: user already exists", zap.String("login", login))
+	} else if err != nil {
+		return nil, nil, nil, fmt.Errorf("bitbucket(dc)-connector: create account %s: %w", login, err)
+	}
+
+	// Skip the GET cache so the lookup sees the account that was just created.
+	fetched, err := u.client.GetUserByName(ctx, login, uhttp.WithNoCache())
+	if err != nil || fetched == nil {
+		if alreadyExists {
+			// The idempotent 409 path never set a password, and the identity check below
+			// needs the fetched email, so failing here loses nothing.
+			if err != nil {
+				return nil, nil, nil, fmt.Errorf("bitbucket(dc)-connector: create account %s: fetch after create: %w", login, err)
+			}
+			return nil, nil, nil, fmt.Errorf("bitbucket(dc)-connector: create account %s: fetch after create: user not found", login)
+		}
+		// The create already succeeded and set the password server-side, so failing here
+		// would discard a working account. Build the resource from what we already know.
+		l.Debug("bitbucket(dc)-connector: create account: fetch after create failed, building resource from known fields",
+			zap.String("login", login), zap.Error(err))
+		// Profile login/user_slug/user_id stay empty until the next sync; the resource ID
+		// and trait login are correct. Slug is left empty rather than guessed: Bitbucket's
+		// real slugs aren't just a lowercased name (e.g. "@" becomes "_", so
+		// jane@corp.com -> jane_corp.com).
+		fetched = &client.User{
+			Name:         login,
+			DisplayName:  displayName,
+			EmailAddress: email,
+			Active:       true,
+			Type:         "NORMAL",
+		}
+	}
+
+	// Usernames are unique in Bitbucket, emails are not, so a different email is another person's account.
+	if alreadyExists && !strings.EqualFold(fetched.EmailAddress, email) {
+		return nil, nil, nil, status.Error(codes.AlreadyExists, fmt.Sprintf("bitbucket(dc)-connector: create account: login %q already exists with a different email address", login))
+	}
+
+	resource, err := userResource(ctx, fetched, nil, nil)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("bitbucket(dc)-connector: create account %s: %w", login, err)
+	}
+
+	if alreadyExists {
+		return &v2.CreateAccountResponse_AlreadyExistsResult{
+			Resource:              resource,
+			IsCreateAccountResult: true,
+		}, nil, nil, nil
+	}
+
+	return &v2.CreateAccountResponse_SuccessResult{
+		Resource:              resource,
+		IsCreateAccountResult: true,
+	}, []*v2.PlaintextData{
+		{
+			Name:  "password",
+			Bytes: []byte(password),
+		},
+	}, nil, nil
+}
+
+// Delete removes the user; a 404 naming NoSuchUserException counts as already deleted so the
+// operation is idempotent. Other 404s (e.g. from a proxy) are errors.
+func (u *userBuilder) Delete(ctx context.Context, resourceID *v2.ResourceId, parentResourceID *v2.ResourceId) (annotations.Annotations, error) {
+	if resourceID.GetResourceType() != u.resourceType.Id {
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("bitbucket(dc)-connector: delete: unexpected resource type %q", resourceID.GetResourceType()))
+	}
+
+	err := u.client.DeleteUser(ctx, resourceID.Resource)
+	if err != nil {
+		if client.IsNotFoundError(err) && client.IsNoSuchUserError(err) {
+			return nil, nil
+		}
+		var bbErr *client.BitbucketError
+		if errors.As(err, &bbErr) && bbErr.ErrorSummary != "" {
+			return nil, fmt.Errorf("bitbucket(dc)-connector: delete user %s: %s: %w", resourceID.Resource, bbErr.ErrorSummary, err)
+		}
+		return nil, fmt.Errorf("bitbucket(dc)-connector: delete user %s: %w", resourceID.Resource, err)
+	}
+	return nil, nil
 }
 
 func newUserBuilder(c *client.DataCenterClient, userGroups []string) *userBuilder {

@@ -7,19 +7,32 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/conductorone/baton-sdk/pkg/pagination"
 	"github.com/conductorone/baton-sdk/pkg/uhttp"
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type DataCenterClient struct {
-	auth       *Auth
+	auth *Auth
+	// httpClient logs every request (including the URL and query string) and is used
+	// for all calls except CreateUser.
 	httpClient *uhttp.BaseHttpClient
-	baseUrl    string
+	// createUserHTTPClient is a plain *http.Client (logging off, redirects disabled) used
+	// only by CreateUser: CreateUser builds its own request and executes it directly via
+	// this client's Do, bypassing uhttp.BaseHttpClient.Do, which logs the request URL on a
+	// transport failure regardless of logger settings, and that URL carries the generated
+	// password as a query parameter.
+	createUserHTTPClient *http.Client
+	baseUrl              string
 }
 
 type BitbucketError struct {
@@ -30,10 +43,66 @@ type BitbucketError struct {
 	ErrorLink        string                   `json:"errorLink,omitempty"`
 	ErrorId          string                   `json:"errorId,omitempty"`
 	ErrorCauses      []map[string]interface{} `json:"errorCauses,omitempty"`
+	Code             codes.Code               `json:"-"`
+	// uhttpCode is the gRPC code uhttp already derived from the HTTP response/transport
+	// error. Stashed here so withProvisioningGRPCCode can copy it into Code for
+	// CreateUser/DeleteUser without recomputing it.
+	uhttpCode codes.Code `json:"-"`
 }
 
 func (b *BitbucketError) Error() string {
 	return b.ErrorMessage
+}
+
+// GRPCStatus implements the interface grpc's status package looks for
+// (interface{ GRPCStatus() *status.Status }). Code is only a real (non-Unknown) status
+// for CreateUser/DeleteUser; sync calls stay Unknown on purpose (see withProvisioningGRPCCode).
+func (b *BitbucketError) GRPCStatus() *status.Status {
+	if b.Code == codes.OK {
+		return status.New(codes.Unknown, b.ErrorMessage)
+	}
+	return status.New(b.Code, b.ErrorMessage)
+}
+
+// IsNotFoundError reports whether err represents an HTTP 404 Not Found response.
+func IsNotFoundError(err error) bool {
+	var bbErr *BitbucketError
+	if errors.As(err, &bbErr) {
+		return bbErr.ErrorCode == http.StatusNotFound
+	}
+	return false
+}
+
+// IsAlreadyExistsError reports whether err represents an HTTP 409 Conflict response.
+func IsAlreadyExistsError(err error) bool {
+	var bbErr *BitbucketError
+	if errors.As(err, &bbErr) {
+		return bbErr.ErrorCode == http.StatusConflict
+	}
+	return false
+}
+
+// IsNoSuchUserError reports Bitbucket's NoSuchUserException so a proxy 404 isn't
+// mistaken for an already-deleted user.
+func IsNoSuchUserError(err error) bool {
+	var bbErr *BitbucketError
+	if errors.As(err, &bbErr) {
+		return strings.Contains(bbErr.ErrorSummary, "NoSuchUserException")
+	}
+	return false
+}
+
+// withProvisioningGRPCCode copies the gRPC code uhttp already derived from the HTTP
+// response/transport error onto a BitbucketError's exposed Code. Only used by
+// CreateUser/DeleteUser: sync calls stay codes.Unknown so a 404 doesn't make the
+// syncer skip the resource. Returns err unchanged if it isn't a *BitbucketError.
+func withProvisioningGRPCCode(err error) error {
+	var bbErr *BitbucketError
+	if !errors.As(err, &bbErr) {
+		return err
+	}
+	bbErr.Code = bbErr.uhttpCode
+	return bbErr
 }
 
 // GET - http://{baseurl}/rest/api/latest/users
@@ -64,10 +133,16 @@ const (
 	groupsWithPermission                  = "permissions/groups"
 	addUserToGroupsEndpoint               = "rest/api/latest/admin/users/add-groups"
 	removeUserFromGroupEndpoint           = "rest/api/latest/admin/users/remove-group"
+	adminUsersEndpoint                    = "rest/api/latest/admin/users"
 
 	// Query parameter names shared by the permission endpoints.
 	nameParam       = "name"
 	permissionParam = "permission"
+	filterParam     = "filter"
+
+	// Query parameter names shared by the paginated list endpoints.
+	startParam = "start"
+	limitParam = "limit"
 )
 
 type Auth struct {
@@ -123,15 +198,29 @@ func New(ctx context.Context, baseUrl string, auth *Auth) (*DataCenterClient, er
 	if err != nil {
 		return nil, err
 	}
+
+	// Same transport options as above, except logging is off and redirects are disabled:
+	// see the createUserHTTPClient field comment.
+	createUserHTTPClient, err := uhttp.NewClient(ctx,
+		uhttp.WithLogger(false, ctxzap.Extract(ctx)),
+	)
+	if err != nil {
+		return nil, err
+	}
+	createUserHTTPClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+
 	if !isValidUrl(baseUrl) {
 		return nil, fmt.Errorf("the url : %s is not valid", baseUrl)
 	}
 
 	// basic authentication or bearerToken
 	dc := DataCenterClient{
-		httpClient: cli,
-		baseUrl:    baseUrl,
-		auth:       auth,
+		httpClient:           cli,
+		createUserHTTPClient: createUserHTTPClient,
+		baseUrl:              baseUrl,
+		auth:                 auth,
 	}
 
 	return &dc, nil
@@ -142,6 +231,8 @@ func GetCustomErr(req *http.Request, resp *http.Response, err error) *BitbucketE
 		return &BitbucketError{
 			ErrorMessage:     "Unknown error",
 			ErrorDescription: "request should not be nil",
+			Code:             codes.Unknown,
+			uhttpCode:        codes.Internal,
 		}
 	}
 
@@ -149,6 +240,9 @@ func GetCustomErr(req *http.Request, resp *http.Response, err error) *BitbucketE
 		ErrorMessage:     err.Error(),
 		ErrorDescription: err.Error(),
 		ErrorLink:        req.URL.String(),
+		// Sync calls stay Unknown; see withProvisioningGRPCCode for the provisioning-only override.
+		Code:      codes.Unknown,
+		uhttpCode: status.Code(err),
 	}
 
 	if resp != nil {
@@ -232,6 +326,210 @@ func (d *DataCenterClient) GetUsers(ctx context.Context, pToken *pagination.Toke
 	return userData.Users, nextPageToken, err
 }
 
+// GetUserByName looks up a single user by case-insensitive exact name match via the users
+// search filter. The filter does substring matching server-side, so results are filtered
+// again here for an exact match on the "name" field; the match is case-insensitive because
+// Bitbucket usernames are themselves case-insensitive (CreateAccount can be asked to create
+// "JDoe" when the account was originally created as "jdoe").
+// GET - http://{baseurl}/rest/api/latest/users?filter={name}
+// https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-system-maintenance/#api-api-latest-users-get
+func (d *DataCenterClient) GetUserByName(ctx context.Context, name string, reqOptions ...uhttp.RequestOption) (*User, error) {
+	start := 0
+	for {
+		uri, err := d.MakeURL(ctx, allUsersEndpoint, map[string]string{
+			filterParam: name,
+			startParam:  strconv.Itoa(start),
+			limitParam:  strconv.Itoa(ITEMSPERPAGE),
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		var userData UsersAPIData
+		resp, err := d.Do(ctx, http.MethodGet, uri, nil, &userData, reqOptions...)
+		if err != nil {
+			return nil, err
+		}
+		err = resp.Body.Close()
+		if err != nil {
+			return nil, err
+		}
+
+		for _, u := range userData.Users {
+			if strings.EqualFold(u.Name, name) {
+				found := u
+				return &found, nil
+			}
+		}
+
+		if userData.IsLastPage {
+			return nil, nil
+		}
+		start = userData.NextPageStart
+	}
+}
+
+// CreateUser creates a new local Bitbucket user account.
+// POST /rest/api/latest/admin/users - 200/201/204 on success, 409 Conflict if a user
+// with that name already exists.
+// Requires the "X-Atlassian-Token: no-check" header, or Bitbucket's XSRF filter rejects
+// the POST with 403.
+// password must be sent as a query parameter; the endpoint ignores a request body.
+// Callers/log infrastructure in front of Bitbucket should treat this URL as sensitive
+// (see README).
+// https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-user-management/#api-admin-users-post
+func (d *DataCenterClient) CreateUser(ctx context.Context, name, password, displayName, emailAddress string, addToDefaultGroup bool) error {
+	uri, err := d.MakeURL(ctx, adminUsersEndpoint, map[string]string{
+		nameParam:           name,
+		"password":          password,
+		"displayName":       displayName,
+		"emailAddress":      emailAddress,
+		"addToDefaultGroup": strconv.FormatBool(addToDefaultGroup),
+	})
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, uri.String(), nil)
+	if err != nil {
+		return sanitizeCreateUserError(GetCustomErr(req, nil, err))
+	}
+	for _, opt := range []uhttp.RequestOption{
+		uhttp.WithAcceptJSONHeader(),
+		d.WithAuthorization(),
+		uhttp.WithHeader("X-Atlassian-Token", "no-check"),
+	} {
+		_, headers, err := opt()
+		if err != nil {
+			return sanitizeCreateUserError(GetCustomErr(req, nil, err))
+		}
+		for k, v := range headers {
+			req.Header.Set(k, v)
+		}
+	}
+
+	// Executed via the plain *http.Client, bypassing uhttp.BaseHttpClient.Do: Do logs the
+	// *url.Error on a transport failure unconditionally, and that error's text carries the
+	// request URL, including the password query parameter above. CheckRedirect on this
+	// client is set to stop following redirects (see New), so a 3xx response falls into
+	// the non-2xx branch below instead of being followed with the password still attached.
+	resp, err := d.createUserHTTPClient.Do(req) // #nosec G704 -- this HTTP wrapper intentionally supports arbitrary connector-defined endpoints.
+	if err != nil {
+		return sanitizeTransportError(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		grpcErr := uhttp.WrapErrorsWithRateLimitInfo(uhttp.GrpcCodeFromHTTPStatus(resp.StatusCode), resp)
+		return sanitizeCreateUserError(GetCustomErr(req, resp, grpcErr))
+	}
+
+	return nil
+}
+
+// maxSanitizedCreateUserErrorLen caps the length of a message extracted from Bitbucket's
+// JSON error body: the body itself is attacker/proxy-controlled (see
+// sanitizeCreateUserMessage), so even the parsed message is bounded defensively.
+const maxSanitizedCreateUserErrorLen = 512
+
+// bitbucketErrorsBody is Bitbucket's JSON error response shape, e.g.
+// {"errors":[{"message":"A user with that name already exists"}]}.
+type bitbucketErrorsBody struct {
+	Errors []struct {
+		Message string `json:"message"`
+	} `json:"errors"`
+}
+
+// sanitizeCreateUserError drops the raw response body from the error because it contains
+// (or, behind a proxy/WAF error page, can echo back) the password query parameter. Only
+// Bitbucket's parsed errors[].message values are surfaced; everything else collapses to a
+// fixed message. ErrorCode is preserved so IsAlreadyExistsError keeps working on the result.
+func sanitizeCreateUserError(err error) error {
+	var bbErr *BitbucketError
+	if !errors.As(err, &bbErr) {
+		return status.Error(status.Code(err), "create user: request failed")
+	}
+
+	return &BitbucketError{
+		ErrorCode:    bbErr.ErrorCode,
+		Code:         bbErr.uhttpCode,
+		ErrorMessage: sanitizeCreateUserMessage(bbErr),
+	}
+}
+
+// sanitizeCreateUserMessage extracts Bitbucket's structured errors[].message values from
+// the raw response body if the body parses as Bitbucket's JSON error shape, otherwise
+// returns a fixed message. The raw body is never surfaced as-is: it can be an HTML error
+// page from a proxy/WAF in front of Bitbucket that echoes the request URI - and therefore
+// the password query parameter - back into the page.
+func sanitizeCreateUserMessage(bbErr *BitbucketError) string {
+	var body bitbucketErrorsBody
+	if bbErr.ErrorSummary != "" && json.Unmarshal([]byte(bbErr.ErrorSummary), &body) == nil {
+		messages := make([]string, 0, len(body.Errors))
+		for _, e := range body.Errors {
+			if e.Message != "" {
+				messages = append(messages, e.Message)
+			}
+		}
+		if len(messages) > 0 {
+			msg := strings.Join(messages, "; ")
+			if len(msg) > maxSanitizedCreateUserErrorLen {
+				// Cut on a rune boundary so the message stays valid UTF-8.
+				n := maxSanitizedCreateUserErrorLen
+				for n > 0 && !utf8.RuneStart(msg[n]) {
+					n--
+				}
+				msg = msg[:n]
+			}
+			return msg
+		}
+	}
+
+	if bbErr.ErrorCode != 0 {
+		return fmt.Sprintf("create user: unexpected status code %d", bbErr.ErrorCode)
+	}
+	return "create user: request failed"
+}
+
+// sanitizeTransportError maps a CreateUser transport failure (timeout, connection reset,
+// DNS, closed server) to a gRPC status without ever reading err's text, which carries the
+// request URL and therefore the generated password.
+func sanitizeTransportError(err error) error {
+	var netErr net.Error
+	if errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &netErr) && netErr.Timeout()) {
+		return status.Error(codes.DeadlineExceeded, "create user: request failed")
+	}
+	return status.Error(codes.Unavailable, "create user: request failed")
+}
+
+// DeleteUser deletes a local Bitbucket user account by name.
+// DELETE /rest/api/latest/admin/users?name={name}
+// Returns 404 if the user does not exist (already deleted). A user belonging to an
+// external directory (LDAP/Crowd) is not deletable through this API and the request
+// fails with a non-404 error carrying a descriptive body.
+// Bitbucket returns 200 with the deleted user; 200 and 204 are both accepted.
+// https://developer.atlassian.com/server/bitbucket/rest/v819/api-group-user-management/#api-admin-users-delete
+func (d *DataCenterClient) DeleteUser(ctx context.Context, name string) error {
+	uri, err := d.MakeURL(ctx, adminUsersEndpoint, map[string]string{
+		nameParam: name,
+	})
+	if err != nil {
+		return err
+	}
+
+	resp, err := d.Do(ctx, http.MethodDelete, uri, nil, nil, uhttp.WithHeader("X-Atlassian-Token", "no-check"))
+	if err != nil {
+		return withProvisioningGRPCCode(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("delete user: unexpected status code %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
 func (d *DataCenterClient) GetGroupUsers(ctx context.Context, group string) ([]User, error) {
 	var users []User
 	var err error
@@ -239,9 +537,9 @@ func (d *DataCenterClient) GetGroupUsers(ctx context.Context, group string) ([]U
 
 	for {
 		queryParams := map[string]string{
-			"start": strconv.Itoa(start),
-			"limit": strconv.Itoa(ITEMSPERPAGE),
-			"group": group,
+			startParam: strconv.Itoa(start),
+			limitParam: strconv.Itoa(ITEMSPERPAGE),
+			"group":    group,
 		}
 
 		uri, err := d.MakeURL(ctx, allUsersEndpoint, queryParams)
