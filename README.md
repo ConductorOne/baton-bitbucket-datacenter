@@ -50,57 +50,25 @@ baton resources
 
 # Account Provisioning
 
-When run with the `--provisioning` flag, `baton-bitbucket-datacenter` supports creating and
-deleting Bitbucket users:
+With the `--provisioning` flag, the connector can create and delete Bitbucket users.
 
-- **Create account**: provisions a new local Bitbucket user (`POST /rest/api/latest/admin/users`)
-  from a username, display name, and email address. The API requires a password unless the
-  request asks it to email the new user a set-password link (`notify=true`), which depends on
-  Bitbucket having a mail server configured. The connector generates a random password
-  (RANDOM_PASSWORD) so a usable credential is returned to C1 as the account's credential without
-  depending on mail delivery; it is never logged or persisted. On a fresh create, the generated password
-  is returned to the caller; on an idempotent 409 (an account with that username and email already
-  exists), the existing account's password was never touched by the request, so no password is
-  returned. An optional `add_to_default_group` field controls whether the user is added to
-  Bitbucket's default group (defaults to `false`). Note that even with a valid password, the new
-  user may still be unable to log in unless `add_to_default_group` is enabled or the account is
-  separately granted permissions - the default group (or an explicit grant) is what gives the
-  account its initial access. Creating an account for a username that already exists is treated as
-  a successful no-op only if the existing user has the same email address that was requested; if
-  the email differs, the existing account belongs to someone else and the request fails instead.
-  If the original password was never delivered to anyone, an administrator must set a new
-  password for the account (**Administration** > **Users** > the user > **Change password**) or
-  delete and re-create the account.
-- **Delete account**: deletes a Bitbucket user (`DELETE /rest/api/latest/admin/users?name=`).
-  Deleting a user that no longer exists is treated as a successful no-op. Users managed by an
-  external directory (e.g. LDAP, Crowd) cannot be deleted through this API; the connector surfaces
-  a clear error in that case instead of silently failing.
+- **Create account**: takes a username, display name and email, and returns a generated random
+  password to C1. The optional `add_to_default_group` field (default `false`) adds the user to
+  Bitbucket's default group; without it the user may not be able to log in.
+- **Delete account**: deletes the user. Users managed by an external directory (LDAP, Crowd)
+  can't be deleted through the API and return an error.
 
-**The generated password is sent as a `password` query string parameter**, not in the
-request body. This is the only way Bitbucket's `POST /rest/api/latest/admin/users` endpoint
-accepts it: the [Atlassian REST API reference](https://developer.atlassian.com/server/bitbucket/rest/)
-documents `name`/`password`/`displayName`/`emailAddress`/`addToDefaultGroup` as query
-parameters with no request body - the endpoint returns 415 for a `application/x-www-form-urlencoded`
-body and silently ignores an `application/json` body (it only ever reads the query string).
-Because the password is in the URL, it can be recorded by anything that logs full request URLs
-in front of Bitbucket - access logs, reverse proxies, load balancers. To reduce exposure:
+Account provisioning needs basic auth (`BATON_BITBUCKETDC_USERNAME` /
+`BATON_BITBUCKETDC_PASSWORD`) for a user with the global `ADMIN` or `SYS_ADMIN` permission.
+HTTP access tokens are not supported, and a token and a username/password can't be configured
+together.
+
+Bitbucket only accepts the generated password as a query string parameter, so anything that logs
+full request URLs in front of Bitbucket (access logs, reverse proxies, load balancers) can record
+it. To reduce exposure:
   - Ask the new user to change their password after first login, or change it as an administrator.
   - Restrict access to any logs or proxies that sit in front of this Bitbucket instance.
-  - Ensure TLS terminates as close to Bitbucket as possible so the URL isn't carried over
-    plaintext HTTP.
-
-These endpoints are under Bitbucket's `admin/` namespace and require credentials with at
-least the `ADMIN` (Administrator) global permission; `SYS_ADMIN` also works. `LICENSED_USER`
-is not sufficient and is rejected.
-
-**HTTP access tokens are not supported for account provisioning**, regardless of the scope
-granted when the token was created: even the maximum scope an HTTP access token can hold
-(Project Admin + Repository Admin) is rejected with a 401 `AuthorisationException` on both
-create and delete, even when the token belongs to a `SYS_ADMIN` user - personal access tokens
-in Bitbucket Server cannot exercise a user's global permissions. To use `--provisioning`,
-configure the connector with `BATON_BITBUCKETDC_USERNAME`
-/ `BATON_BITBUCKETDC_PASSWORD` (basic auth) for a user with global `ADMIN` or `SYS_ADMIN`
-permission instead of `BATON_BITBUCKETDC_TOKEN`; the connector rejects configuring both at once.
+  - Terminate TLS as close to Bitbucket as possible so the URL isn't carried over plaintext HTTP.
 
 # Contributing, Support and Issues
 
