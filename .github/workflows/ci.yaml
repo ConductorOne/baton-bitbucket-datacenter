@@ -1,6 +1,9 @@
 name: ci
-on: 
+on:
   pull_request:
+  push:
+    branches:
+      - main
 jobs:
   go-lint:
     runs-on: ubuntu-latest
@@ -14,7 +17,7 @@ jobs:
       - name: Run linters
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.13.2
+          version: v2.14.0
           args: --timeout=10m
   go-test:
     strategy:
